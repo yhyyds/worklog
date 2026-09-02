@@ -49,7 +49,7 @@ pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0002_obsidian.sql"))
 }
 
-fn load_settings(connection: &Connection) -> Result<ObsidianSettings, String> {
+pub(crate) fn load_settings(connection: &Connection) -> Result<ObsidianSettings, String> {
     let stored: Option<String> = connection
         .query_row("SELECT value_json FROM app_settings WHERE key=?1", [SETTINGS_KEY], |row| row.get(0))
         .optional()
@@ -210,7 +210,7 @@ fn preview_core(connection: &Connection, work_date: &str) -> Result<DailyNotePre
     })
 }
 
-fn create_backup(vault: &Path, relative: &Path, source: &Path) -> Result<PathBuf, String> {
+pub(crate) fn create_backup(vault: &Path, relative: &Path, source: &Path) -> Result<PathBuf, String> {
     let stamp = Local::now().format("%Y%m%d-%H%M%S%.3f").to_string();
     let file_name = relative.file_name().and_then(|value| value.to_str()).unwrap_or("daily.md");
     let backup = vault
@@ -224,7 +224,7 @@ fn create_backup(vault: &Path, relative: &Path, source: &Path) -> Result<PathBuf
     Ok(backup)
 }
 
-fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     let parent = path.parent().ok_or("日记路径没有父目录")?;
     fs::create_dir_all(parent).map_err(|error| format!("无法创建日记目录：{error}"))?;
     let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or("daily.md");
