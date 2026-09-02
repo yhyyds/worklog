@@ -1,13 +1,16 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Worklog",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "cn.worklog.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build",
+    "windows": {
+      "staticVCRuntime": true
+    }
   },
   "app": {
     "windows": [{
@@ -24,7 +27,25 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "publisher": "Huan Yu",
+    "copyright": "Copyright © 2026 Huan Yu",
+    "shortDescription": "本地优先的工作记录、任务规划与专注计时工具",
+    "longDescription": "Worklog 将四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总整合在一个本地优先的 Windows 桌面应用中。",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
+      "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }
