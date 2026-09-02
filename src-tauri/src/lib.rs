@@ -1,3 +1,4 @@
+mod closing;
 mod commands;
 mod db;
 mod model;
@@ -36,6 +37,7 @@ pub fn run() {
             fs::create_dir_all(&app_dir)?;
             let connection = db::open_database(&app_dir.join("worklog.db"))?;
             obsidian::initialize(&connection)?;
+            closing::initialize(&connection)?;
             app.manage(Database(Mutex::new(connection)));
             Ok(())
         })
@@ -50,6 +52,8 @@ pub fn run() {
             commands::resume_focus,
             commands::switch_focus,
             commands::complete_focus,
+            closing::preview_end_of_day,
+            closing::close_day,
             obsidian::get_obsidian_settings,
             obsidian::save_obsidian_settings,
             obsidian::preview_daily_note,

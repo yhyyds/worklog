@@ -2,7 +2,7 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M3 Obsidian 同步
+## 当前里程碑：M4 日终收尾与跨日顺延
 
 - React + TypeScript + Vite 界面。
 - Tauri 2 + Rust Windows 桌面层。
@@ -14,6 +14,10 @@
 - 只替换受管理 Markdown 区块，保留所有人工内容。
 - 标记异常时拒绝覆盖；覆盖前备份并采用原子文件替换。
 - 隐藏/草稿事件不进入日记，严格控制回顾噪音。
+- 日终页面汇总已完成、等待与阻塞事项，并逐项确认顺延。
+- 已完成子任务不会复制；未完成子任务可独立顺延并在必要时提升为顶级事项。
+- 次日重新生成显示编号，任务永久 ID 保持不变。
+- 日终确认后生成明日任务草稿，并在已配置时同步 Obsidian 今日日记。
 - Windows CI 同时运行前端检查与 Rust 测试。
 
 ## 本地开发
@@ -45,4 +49,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - Obsidian 只作为 Markdown 查看、补充与回顾入口。
 - 自动生成内容只写入受管理区块，保留人工补充。
 
-详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M2 实现说明](docs/M2_IMPLEMENTATION.md) 和 [M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md)。
+详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M2 实现说明](docs/M2_IMPLEMENTATION.md) 和 [M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md) 和 [M4 日终收尾](docs/M4_DAY_CLOSING.md)。

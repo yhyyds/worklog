@@ -1,8 +1,15 @@
 import { id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
-import type { CreateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
+const nextDate = (workDate: string) => {
+  const [year, month, day] = workDate.split('-').map(Number)
+  const next = new Date(Date.UTC(year, month - 1, day + 1))
+  return next.toISOString().slice(0, 10)
+}
+const isCarryCandidate = (status: TaskStatus) => status !== 'completed' && status !== 'cancelled'
+
 const findTask = (day: DayState, taskId: string) => {
   const task = day.tasks.find((item) => item.id === taskId)
   if (!task) throw new Error('任务不存在或已移出今天')
@@ -76,5 +83,67 @@ export class BrowserGateway implements WorklogGateway {
     const minutes = Math.max(1, Math.round(actual / 60))
     const title = reason === 'abandoned' ? `放弃本轮工作，已进行${minutes}分钟` : `完成一轮工作，共${minutes}分钟`
     return commit({ ...day, focus: null, timeline: [...day.timeline, timelineEvent(`focus.${reason}`, title)] })
+  }
+
+  async previewEndOfDay(workDate: string): Promise<EndOfDayPreview> {
+    const day = loadDay(workDate)
+    return {
+      workDate,
+      nextWorkDate: nextDate(workDate),
+      totalCount: day.tasks.length,
+      completedCount: day.tasks.filter((task) => task.status === 'completed').length,
+      waitingCount: day.tasks.filter((task) => task.status === 'waiting').length,
+      blockedCount: day.tasks.filter((task) => task.status === 'blocked').length,
+      candidates: day.tasks.filter((task) => isCarryCandidate(task.status)).map((task) => ({
+        instanceId: task.id, permanentTaskId: task.permanentTaskId, parentId: task.parentId,
+        displayCode: task.displayCode, title: task.title, status: task.status,
+        importance: task.importance, urgency: task.urgency,
+      })),
+      alreadyClosed: day.timeline.some((event) => event.type === 'day.closed'),
+    }
+  }
+
+  async closeDay(input: CloseDayRequest): Promise<CloseDayResult> {
+    const source = loadDay(input.workDate)
+    if (source.focus) throw new Error('请先结束或放弃当前专注，再进行日终收尾')
+    if (source.timeline.some((event) => event.type === 'day.closed')) throw new Error('今天已经完成日终收尾，不能重复顺延')
+    if (nextDate(input.workDate) !== input.nextWorkDate) throw new Error('顺延目标必须是紧接着的下一自然日')
+    const eligible = new Set(source.tasks.filter((task) => isCarryCandidate(task.status)).map((task) => task.id))
+    const selected = new Set(input.selectedInstanceIds)
+    if ([...selected].some((id) => !eligible.has(id))) throw new Error('顺延列表包含已完成、已取消或不存在的事项')
+
+    const next = loadDay(input.nextWorkDate)
+    const carriedTasks = [...next.tasks]
+    const destination = new Map<string, string>()
+    for (const task of source.tasks.filter((item) => selected.has(item.id))) {
+      if (carriedTasks.some((item) => item.permanentTaskId === task.permanentTaskId)) throw new Error(`次日已经包含任务${task.displayCode}`)
+      const parentId = task.parentId ? destination.get(task.parentId) ?? null : null
+      const displayCode = nextDisplayCode(carriedTasks, parentId)
+      const status: TaskStatus = task.status === 'waiting' || task.status === 'blocked' ? task.status : 'not_started'
+      const carried: DayTask = {
+        ...task, id: id(), parentId, displayCode, status,
+        plannedStart: null, plannedEnd: null, createdAt: new Date().toISOString(),
+      }
+      carriedTasks.push(carried)
+      destination.set(task.id, carried.id)
+    }
+    const completed = source.tasks.filter((task) => task.status === 'completed').length
+    const carriedCount = selected.size
+    const skippedCount = eligible.size - carriedCount
+    const sourceTasks = source.tasks.map((task): DayTask => {
+      const shouldDefer = selected.has(task.id) && (task.status === 'not_started' || task.status === 'in_progress')
+      return shouldDefer ? { ...task, status: 'deferred' } : task
+    })
+    const sourceDay = {
+      ...source, tasks: sourceTasks,
+      timeline: [...source.timeline, timelineEvent('day.closed', `日终收尾：完成${completed}项，顺延${carriedCount}项至${input.nextWorkDate}`)],
+    }
+    const nextDay = {
+      ...next, tasks: carriedTasks,
+      timeline: carriedCount > 0 ? [...next.timeline, timelineEvent('day.carryover_received', `从${input.workDate}顺延${carriedCount}项任务`, 'detail')] : next.timeline,
+    }
+    saveDay(sourceDay)
+    saveDay(nextDay)
+    return { sourceDay: structuredClone(sourceDay), nextDay: structuredClone(nextDay), carriedCount, skippedCount }
   }
 }
