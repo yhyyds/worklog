@@ -54,7 +54,7 @@ pub(crate) fn load_settings(connection: &Connection) -> Result<ObsidianSettings,
         .query_row("SELECT value_json FROM app_settings WHERE key=?1", [SETTINGS_KEY], |row| row.get(0))
         .optional()
         .map_err(|error| error.to_string())?;
-    let mut settings = stored
+    let mut settings: ObsidianSettings = stored
         .map(|value| serde_json::from_str(&value).map_err(|error| format!("Obsidian 设置损坏：{error}")))
         .transpose()?
         .unwrap_or_default();
