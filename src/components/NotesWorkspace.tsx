@@ -52,6 +52,12 @@ export default function NotesWorkspace() {
   }, [notes, query])
   const dirty = content !== savedContent
 
+  useEffect(() => {
+    const handleOpen = () => { void openWorkspace() }
+    window.addEventListener('worklog:open-notes', handleOpen)
+    return () => window.removeEventListener('worklog:open-notes', handleOpen)
+  }, [])
+
   async function refreshList() {
     if (!desktop) return
     setNotes(await invoke<VaultNoteSummary[]>('list_vault_notes'))
