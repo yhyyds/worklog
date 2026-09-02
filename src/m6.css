@@ -1,0 +1,23 @@
+.timer-settings-fab { position: fixed; right: 230px; bottom: 24px; z-index: 30; height: 48px; padding: 0 16px; border: 0; border-radius: 16px; background: #355b72; color: white; font-weight: 700; box-shadow: 0 12px 28px rgba(31, 69, 91, .24); cursor: pointer; }
+.timer-settings-backdrop { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; padding: 24px; background: rgba(26, 34, 39, .42); backdrop-filter: blur(7px); }
+.timer-settings-panel { width: min(560px, 100%); border: 1px solid #dce5ea; border-radius: 22px; padding: 24px; background: #f9fbfc; box-shadow: 0 28px 80px rgba(24, 38, 47, .26); }
+.timer-settings-panel header { display: flex; justify-content: space-between; }
+.timer-settings-panel h2 { margin: 4px 0 18px; color: #293f4c; }
+.timer-settings-panel header small { color: #748994; letter-spacing: .12em; }
+.timer-settings-panel header button { border: 0; background: transparent; color: #71848e; font-size: 27px; cursor: pointer; }
+.timer-setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.timer-setting-grid label { display: grid; grid-template-columns: 1fr 72px auto; align-items: center; gap: 8px; padding: 12px; border: 1px solid #e0e8ec; border-radius: 12px; background: white; color: #455c68; }
+.timer-setting-grid input { min-width: 0; border: 1px solid #d5e0e5; border-radius: 7px; padding: 7px; }
+.timer-setting-grid small { color: #83949d; }
+.auto-break { display: flex; gap: 11px; margin-top: 14px; padding: 14px; border-radius: 12px; background: #edf3f6; }
+.auto-break input { accent-color: #3c718e; }
+.auto-break span { display: grid; gap: 4px; color: #405864; }
+.auto-break small { color: #778b95; }
+.shortcut-hint { color: #71838c; font-size: 12px; }
+.shortcut-hint kbd { border: 1px solid #cfd9de; border-bottom-width: 2px; border-radius: 5px; padding: 2px 5px; background: white; color: #455b66; }
+.timer-setting-message { padding: 9px 11px; border-radius: 9px; background: #eef4ef; color: #496a53; }
+.timer-settings-panel footer { display: flex; justify-content: flex-end; margin-top: 18px; }
+.timer-settings-panel footer button { border: 0; border-radius: 10px; padding: 10px 16px; background: #35677f; color: white; font-weight: 700; cursor: pointer; }
+.focus-strip.resting { background: linear-gradient(135deg, #edf6f2, #f8fbf8); border-color: #d8e8df; }
+.focus-strip.resting .timer-ring { border-color: #84af9b; }
+@media (max-width: 700px) { .timer-setting-grid { grid-template-columns: 1fr; } .timer-settings-fab { right: 226px; } }

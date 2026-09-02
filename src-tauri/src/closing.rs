@@ -97,12 +97,13 @@ fn close_day_core(connection: &mut Connection, input: CloseDayInput) -> Result<C
         return Err("顺延目标必须是紧接着的下一自然日".to_string());
     }
     let active_focus: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM focus_sessions WHERE active_guard=1 AND work_date=?1",
+        "SELECT (SELECT COUNT(*) FROM focus_sessions WHERE active_guard=1 AND work_date=?1)
+              + (SELECT COUNT(*) FROM rest_sessions WHERE active_guard=1 AND work_date=?1)",
         [&input.work_date],
         |row| row.get(0),
     ).map_err(|error| error.to_string())?;
     if active_focus > 0 {
-        return Err("请先结束或放弃当前专注，再进行日终收尾".to_string());
+        return Err("请先结束当前专注或休息，再进行日终收尾".to_string());
     }
     let closed: i64 = connection.query_row(
         "SELECT COUNT(*) FROM day_closures WHERE work_date=?1",

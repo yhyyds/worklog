@@ -4,11 +4,13 @@ import App from './App'
 import ObsidianSync from './components/ObsidianSync'
 import EndOfDay from './components/EndOfDay'
 import NotesWorkspace from './components/NotesWorkspace'
+import DesktopIntegration from './components/DesktopIntegration'
 import './styles.css'
 import './m2.css'
 import './m3.css'
 import './m4.css'
 import './m5.css'
+import './m6.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,5 +18,6 @@ createRoot(document.getElementById('root')!).render(
     <ObsidianSync />
     <EndOfDay />
     <NotesWorkspace />
+    <DesktopIntegration />
   </StrictMode>,
 )

@@ -1,4 +1,4 @@
-use crate::model::{DayState, DayTask, FocusSession, TimelineEvent};
+use crate::model::{DayState, DayTask, FocusSession, RestSession, TimelineEvent};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value};
@@ -20,7 +20,12 @@ pub fn open_database(path: &Path) -> Result<Connection, Box<dyn std::error::Erro
 }
 
 pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(include_str!("../migrations/0001_initial.sql"))
+    connection.execute_batch(include_str!("../migrations/0001_initial.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0002_obsidian.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0003_day_closing.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0004_essay_notes.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0005_focus_lifecycle.sql"))?;
+    Ok(())
 }
 
 pub fn minute_value(value: &Option<String>) -> Result<Option<i64>, String> {
@@ -98,5 +103,21 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
         }
     ).optional().map_err(|error| error.to_string())?;
 
-    Ok(DayState { work_date: work_date.to_string(), tasks, timeline, focus })
+    let rest = connection.query_row(
+        "SELECT id,rest_kind,status,planned_seconds,remaining_seconds,target_end_at_utc,started_at_utc
+         FROM rest_sessions WHERE active_guard=1 AND work_date=?1 LIMIT 1",
+        [work_date], |row| {
+            let status: String = row.get(2)?;
+            let stored: i64 = row.get(4)?;
+            let target: Option<String> = row.get(5)?;
+            Ok(RestSession {
+                id: row.get(0)?, rest_kind: row.get(1)?, status: status.clone(),
+                planned_seconds: row.get(3)?,
+                remaining_seconds: remaining_from_target(&status, stored, &target),
+                target_end_at: target, started_at: row.get(6)?,
+            })
+        }
+    ).optional().map_err(|error| error.to_string())?;
+
+    Ok(DayState { work_date: work_date.to_string(), tasks, timeline, focus, rest })
 }

@@ -2,7 +2,7 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M5 随笔与 Obsidian 文件工作区
+## 当前里程碑：M6 番茄钟生命周期与 Windows 桌面集成
 
 - React + TypeScript + Vite 界面。
 - Tauri 2 + Rust Windows 桌面层。
@@ -23,6 +23,11 @@
 - 支持 GFM 与 Obsidian Wiki Link，外部修改可自动刷新或提示冲突。
 - 新建随笔只向今日记录写入一条简洁事件，后续编辑保持隐藏。
 - 路径穿越、符号链接越界、非法文件名和超大文件均受保护。
+- Rust 后台状态机负责专注结束、自动休息、休息结束与系统通知。
+- 可配置专注、短休息、长休息和长休息间隔。
+- 应用最小化、锁屏、休眠恢复或 WebView 节流后仍按绝对时间校正。
+- 系统托盘支持打开与退出，关闭窗口时隐藏到托盘。
+- 全局快捷键 Ctrl+Shift+W 可随时唤起 Worklog。
 - Windows CI 同时运行前端检查与 Rust 测试。
 
 ## 本地开发
@@ -54,4 +59,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - Obsidian 只作为 Markdown 查看、补充与回顾入口。
 - 自动生成内容只写入受管理区块，保留人工补充。
 
-详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M2 实现说明](docs/M2_IMPLEMENTATION.md) 和 [M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md) 和 [M4 日终收尾](docs/M4_DAY_CLOSING.md) 和 [M5 笔记工作区](docs/M5_NOTES_WORKSPACE.md)。
+详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M2 实现说明](docs/M2_IMPLEMENTATION.md) 和 [M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md) 和 [M4 日终收尾](docs/M4_DAY_CLOSING.md) 和 [M5 笔记工作区](docs/M5_NOTES_WORKSPACE.md) 和 [M6 番茄钟生命周期](docs/M6_FOCUS_LIFECYCLE.md)。

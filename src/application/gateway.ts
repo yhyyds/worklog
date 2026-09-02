@@ -53,6 +53,14 @@ export interface CloseDayResult {
   skippedCount: number
 }
 
+export interface TimerSettings {
+  workMinutes: number
+  shortBreakMinutes: number
+  longBreakMinutes: number
+  longBreakInterval: number
+  autoStartBreak: boolean
+}
+
 export interface WorklogGateway {
   getDaySnapshot(workDate: string): Promise<DayState>
   createTask(input: CreateTaskRequest): Promise<DayState>
@@ -63,6 +71,12 @@ export interface WorklogGateway {
   resumeFocus(workDate: string): Promise<DayState>
   switchFocus(workDate: string, taskId: string): Promise<DayState>
   completeFocus(workDate: string, reason: 'elapsed' | 'early_complete' | 'abandoned'): Promise<DayState>
+  pauseRest(workDate: string): Promise<DayState>
+  resumeRest(workDate: string): Promise<DayState>
+  completeRest(workDate: string): Promise<DayState>
+  skipRest(workDate: string): Promise<DayState>
+  getTimerSettings(): Promise<TimerSettings>
+  saveTimerSettings(settings: TimerSettings): Promise<TimerSettings>
   previewEndOfDay(workDate: string): Promise<EndOfDayPreview>
   closeDay(input: CloseDayRequest): Promise<CloseDayResult>
 }
