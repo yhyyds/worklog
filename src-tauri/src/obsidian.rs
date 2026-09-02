@@ -440,7 +440,12 @@ mod tests {
         assert!(markdown.contains("- [x] #1 整理资料"));
         assert!(markdown.contains("  - [ ] #1.1 制作 PPT"));
         assert!(markdown.contains("08:00–09:00：#1 整理资料"));
-        assert!(markdown.contains("10:43：完成#1：整理资料"));
+        let local_time = DateTime::parse_from_rfc3339("2026-09-02T10:43:00+08:00")
+            .unwrap()
+            .with_timezone(&Local)
+            .format("%H:%M")
+            .to_string();
+        assert!(markdown.contains(&format!("{local_time}：完成#1：整理资料")));
         assert!(!markdown.contains("临时草稿"));
     }
 }
