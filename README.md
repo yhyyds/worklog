@@ -2,16 +2,16 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M1 工程骨架
+## 当前里程碑：M2 SQLite 核心
 
-本次基线包含：
-
-- React + TypeScript + Vite 前端，可直接在浏览器运行交互原型。
-- Tauri 2 + Rust 桌面壳与 SQLite 初始化。
-- 四象限任务、新建/完成任务、工作想法、低噪声时间线。
-- 绑定具体任务的基础番茄钟，支持暂停、继续与提前结束。
-- 每日显示编号与永久 ID 分离的领域模型。
-- Windows CI：前端类型检查、测试、生产构建与 Rust 检查。
+- React + TypeScript + Vite 界面。
+- Tauri 2 + Rust Windows 桌面层。
+- SQLite 管理桌面端任务、事件、工作想法和番茄钟。
+- 每个写操作在同一事务中更新状态并追加不可变事件。
+- 浏览器开发模式使用 localStorage 适配器，桌面模式使用 SQLite 适配器。
+- 四象限任务、两级子任务、每日编号和永久 ID。
+- 绑定任务的番茄钟，支持暂停、恢复、切换和结束。
+- Windows CI 同时运行前端检查与 Rust 事务测试。
 
 ## 本地开发
 
@@ -32,14 +32,14 @@ npm run tauri dev
 
 ```bash
 npm run check
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## 数据原则
 
-- 任务、番茄钟和时间线由应用数据库管理。
-- 所有状态变化追加不可变事件，日记由事件投影生成。
+- SQLite 是任务、番茄钟和时间线的内部事实源。
+- 原始事件完整保留，日记读取降噪后的回顾投影。
 - Obsidian 只作为 Markdown 查看、补充与回顾入口。
 - 自动生成内容只写入受管理区块，保留人工补充。
 
-详细设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/PRODUCT_BASELINE.md](docs/PRODUCT_BASELINE.md)。
+详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md) 和 [M2 实现说明](docs/M2_IMPLEMENTATION.md)。
