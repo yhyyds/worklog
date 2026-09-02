@@ -28,10 +28,17 @@ export function useWorklog() {
     createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),
     addWorkEntry: (content: string, entryType: EntryType, reviewLevel: ReviewLevel, taskId: string | null) => run(() => gateway.addWorkEntry({ workDate, content, entryType, reviewLevel, taskId })),
-    startFocus: (taskId: string, plannedSeconds = 1500) => run(() => gateway.startFocus(workDate, taskId, plannedSeconds)),
+    startFocus: (taskId: string, plannedSeconds?: number) => run(async () => {
+      const seconds = plannedSeconds ?? (await gateway.getTimerSettings()).workMinutes * 60
+      return gateway.startFocus(workDate, taskId, seconds)
+    }),
     pauseFocus: () => run(() => gateway.pauseFocus(workDate)),
     resumeFocus: () => run(() => gateway.resumeFocus(workDate)),
     switchFocus: (taskId: string) => run(() => gateway.switchFocus(workDate, taskId)),
     completeFocus: (reason: 'elapsed' | 'early_complete' | 'abandoned') => run(() => gateway.completeFocus(workDate, reason)),
+    pauseRest: () => run(() => gateway.pauseRest(workDate)),
+    resumeRest: () => run(() => gateway.resumeRest(workDate)),
+    completeRest: () => run(() => gateway.completeRest(workDate)),
+    skipRest: () => run(() => gateway.skipRest(workDate)),
   }
 }

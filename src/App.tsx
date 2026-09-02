@@ -44,15 +44,17 @@ function App() {
 
   const activeTask = useMemo(() => day.tasks.find((task) => task.id === day.focus?.taskId) ?? null, [day])
   const selectedTask = day.tasks.find((task) => task.id === selectedTaskId) ?? day.tasks.find((task) => task.status !== 'completed') ?? null
-  const left = day.focus ? remainingSeconds(day.focus, tick) : 1500
+  const left = day.rest ? remainingSeconds(day.rest, tick) : day.focus ? remainingSeconds(day.focus, tick) : 1500
 
   useEffect(() => {
-    if (!day.focus) { completing.current = false; return }
-    if (day.focus.status !== 'running' || left > 0 || completing.current) return
+    if ('__TAURI_INTERNALS__' in window) { completing.current = false; return }
+    const running = day.rest ?? day.focus
+    if (!running) { completing.current = false; return }
+    if (running.status !== 'running' || left > 0 || completing.current) return
     completing.current = true
-    const task = activeTask
-    worklog.completeFocus('elapsed').then(() => notify('专注结束', task ? `${task.displayCode} ${task.title}` : '该休息一下了')).catch(() => { completing.current = false })
-  }, [activeTask, day.focus, left, worklog])
+    const operation = day.rest ? worklog.completeRest() : worklog.completeFocus('elapsed')
+    operation.catch(() => { completing.current = false })
+  }, [day.focus, day.rest, left, worklog])
 
   function createTask(title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) {
     ignore(worklog.createTask(title, importance, urgency, parentId, plannedStart, plannedEnd))
@@ -87,14 +89,15 @@ function App() {
       <header className="topbar"><div><p>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p><h1>我的一天</h1></div><div className="top-actions"><span>{day.tasks.filter((task) => task.status === 'completed').length}/{day.tasks.length} 已完成</span><button className="round">•••</button></div></header>
       {worklog.error && <div className="error-banner"><span>{worklog.error}</span><button onClick={worklog.clearError}>关闭</button></div>}
 
-      <section className="focus-strip">
-        <div className="timer-ring"><strong>{formatSeconds(left)}</strong><span>{day.focus ? (day.focus.status === 'running' ? '专注中' : '已暂停') : '准备专注'}</span></div>
-        <div className="focus-copy"><small>当前专注</small><h2>{activeTask ? `${activeTask.displayCode} ${activeTask.title}` : selectedTask ? `${selectedTask.displayCode} ${selectedTask.title}` : '先选择一项今日任务'}</h2><p>{day.focus ? '记录会自动关联到当前任务' : '选择任务后，一次点击即可开始 25 分钟'}</p>
-          {day.tasks.some((task) => task.status !== 'completed') && <select className="focus-picker" value={day.focus?.taskId ?? selectedTask?.id ?? ''} onChange={(event) => chooseFocusTask(event.target.value)}>{day.tasks.filter((task) => task.status !== 'completed').map((task) => <option key={task.id} value={task.id}>{task.displayCode} {task.title}</option>)}</select>}
+      <section className={`focus-strip ${day.rest ? 'resting' : ''}`}>
+        <div className="timer-ring"><strong>{formatSeconds(left)}</strong><span>{day.rest ? (day.rest.status === 'running' ? '休息中' : '休息暂停') : day.focus ? (day.focus.status === 'running' ? '专注中' : '已暂停') : '准备专注'}</span></div>
+        <div className="focus-copy"><small>{day.rest ? '当前休息' : '当前专注'}</small><h2>{day.rest ? (day.rest.restKind === 'long' ? '长休息 · 让注意力真正恢复' : '短休息 · 离开屏幕活动一下') : activeTask ? `${activeTask.displayCode} ${activeTask.title}` : selectedTask ? `${selectedTask.displayCode} ${selectedTask.title}` : '先选择一项今日任务'}</h2><p>{day.rest ? '休息不会写入每日回顾；结束后再选择下一项任务。' : day.focus ? '记录会自动关联到当前任务' : '选择任务后，一次点击即可开始专注'}</p>
+          {!day.rest && day.tasks.some((task) => task.status !== 'completed') && <select className="focus-picker" value={day.focus?.taskId ?? selectedTask?.id ?? ''} onChange={(event) => chooseFocusTask(event.target.value)}>{day.tasks.filter((task) => task.status !== 'completed').map((task) => <option key={task.id} value={task.id}>{task.displayCode} {task.title}</option>)}</select>}
         </div>
         <div className="focus-actions">
-          {!day.focus && selectedTask && <button disabled={worklog.busy} className="primary" onClick={() => ignore(worklog.startFocus(selectedTask.id))}>▶ 开始专注</button>}
+          {!day.focus && !day.rest && selectedTask && <button disabled={worklog.busy} className="primary" onClick={() => ignore(worklog.startFocus(selectedTask.id))}>▶ 开始专注</button>}
           {day.focus && <><button disabled={worklog.busy} className="secondary" onClick={() => ignore(day.focus?.status === 'running' ? worklog.pauseFocus() : worklog.resumeFocus())}>{day.focus.status === 'running' ? 'Ⅱ 暂停' : '▶ 继续'}</button><button className="text-button" onClick={() => ignore(worklog.completeFocus('early_complete'))}>提前完成</button><button className="text-button danger" onClick={() => ignore(worklog.completeFocus('abandoned'))}>放弃</button></>}
+          {day.rest && <><button disabled={worklog.busy} className="secondary" onClick={() => ignore(day.rest?.status === 'running' ? worklog.pauseRest() : worklog.resumeRest())}>{day.rest.status === 'running' ? 'Ⅱ 暂停休息' : '▶ 继续休息'}</button><button className="text-button" onClick={() => ignore(worklog.skipRest())}>跳过休息</button></>}
         </div>
       </section>
 

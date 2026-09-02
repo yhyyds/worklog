@@ -1,7 +1,7 @@
 use crate::{db, model::*, Database};
 use chrono::{Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 fn validate_choice(value: &str, allowed: &[&str], field: &str) -> Result<(), String> {
     if allowed.contains(&value) { Ok(()) } else { Err(format!("{field} 值无效")) }
@@ -104,6 +104,8 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
     let active: i64 = transaction.query_row("SELECT COUNT(*) FROM focus_sessions WHERE active_guard=1", [], |row| row.get(0)).map_err(|error| error.to_string())?;
     if active > 0 { return Err("已有正在进行的专注".into()); }
+    let active_rest: i64 = transaction.query_row("SELECT COUNT(*) FROM rest_sessions WHERE active_guard=1", [], |row| row.get(0)).map_err(|error| error.to_string())?;
+    if active_rest > 0 { return Err("请先完成或跳过当前休息".into()); }
     let (task_id, display_code, title) = task_info(&transaction, &input.task_id)?;
     let session_id = db::new_id();
     let segment_id = db::new_id();
@@ -183,6 +185,9 @@ pub(crate) fn complete_focus_core(connection: &mut Connection, input: CompleteFo
     let minutes = ((actual + 30) / 60).max(1);
     let title = if input.reason == "abandoned" { format!("放弃本轮工作，已进行{minutes}分钟") } else { format!("完成一轮工作，共{minutes}分钟") };
     db::append_event(&transaction, &format!("focus.{}", input.reason), "focus", &session_id, &input.work_date, "summary", &title, None, &db::new_id())?;
+    if input.reason != "abandoned" {
+        crate::timer::begin_rest_in_transaction(&transaction, &input.work_date, &session_id)?;
+    }
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
 }
@@ -209,7 +214,22 @@ pub fn resume_focus(database: State<'_, Database>, input: FocusActionInput) -> R
 #[tauri::command]
 pub fn switch_focus(database: State<'_, Database>, input: SwitchFocusInput) -> Result<DayState, String> { with_database(database, |connection| switch_focus_core(connection, input)) }
 #[tauri::command]
-pub fn complete_focus(database: State<'_, Database>, input: CompleteFocusInput) -> Result<DayState, String> { with_database(database, |connection| complete_focus_core(connection, input)) }
+pub fn complete_focus(app: AppHandle, database: State<'_, Database>, input: CompleteFocusInput) -> Result<DayState, String> {
+    let mut connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
+    let task_text: String = connection.query_row(
+        "SELECT i.display_code || ' ' || t.title FROM focus_sessions fs
+         JOIN task_day_instances i ON i.id=fs.primary_task_instance_id
+         JOIN tasks t ON t.id=i.task_id WHERE fs.active_guard=1 AND fs.work_date=?1",
+        [&input.work_date], |row| row.get(0),
+    ).map_err(|_| "当前没有进行中的专注".to_string())?;
+    let reason = input.reason.clone();
+    let day = complete_focus_core(&mut connection, input)?;
+    drop(connection);
+    let notices = crate::timer::focus_completion_notices(&day, &reason, &task_text);
+    crate::timer::show_notices(&app, &notices);
+    let _ = app.emit("worklog-timer-changed", ());
+    Ok(day)
+}
 
 #[cfg(test)]
 mod tests {

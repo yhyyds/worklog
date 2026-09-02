@@ -37,11 +37,22 @@ export interface FocusSession {
   startedAt: string
 }
 
+export interface RestSession {
+  id: string
+  restKind: 'short' | 'long'
+  status: 'running' | 'paused'
+  plannedSeconds: number
+  remainingSeconds: number
+  targetEndAt: string | null
+  startedAt: string
+}
+
 export interface DayState {
   workDate: string
   tasks: DayTask[]
   timeline: TimelineEvent[]
   focus: FocusSession | null
+  rest: RestSession | null
 }
 
 export const id = () => crypto.randomUUID()
@@ -51,7 +62,7 @@ export function localDate(): string {
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-')
 }
 
-export const emptyDay = (workDate = localDate()): DayState => ({ workDate, tasks: [], timeline: [], focus: null })
+export const emptyDay = (workDate = localDate()): DayState => ({ workDate, tasks: [], timeline: [], focus: null, rest: null })
 
 export function nextDisplayCode(tasks: DayTask[], parentId: string | null): string {
   if (!parentId) {
@@ -66,7 +77,7 @@ export function nextDisplayCode(tasks: DayTask[], parentId: string | null): stri
   return `${prefix}${largest + 1}`
 }
 
-export function remainingSeconds(focus: FocusSession, now = Date.now()): number {
+export function remainingSeconds(focus: Pick<FocusSession, 'status' | 'remainingSeconds' | 'targetEndAt'>, now = Date.now()): number {
   if (focus.status === 'paused' || !focus.targetEndAt) return focus.remainingSeconds
   return Math.max(0, Math.ceil((new Date(focus.targetEndAt).getTime() - now) / 1000))
 }

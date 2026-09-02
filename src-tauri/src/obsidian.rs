@@ -401,6 +401,7 @@ mod tests {
                 },
             ],
             focus: None,
+            rest: None,
         }
     }
 

@@ -1,5 +1,5 @@
 import { id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
-import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
@@ -50,6 +50,7 @@ export class BrowserGateway implements WorklogGateway {
   async startFocus(workDate: string, taskId: string, plannedSeconds: number) {
     const day = loadDay(workDate)
     if (day.focus) throw new Error('已有正在进行的专注')
+    if (day.rest) throw new Error('请先完成或跳过当前休息')
     const task = findTask(day, taskId)
     const now = Date.now()
     return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: new Date(now + plannedSeconds * 1000).toISOString(), startedAt: new Date(now).toISOString() }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${task.displayCode} ${task.title}`)] })
@@ -82,7 +83,47 @@ export class BrowserGateway implements WorklogGateway {
     const actual = Math.max(0, day.focus.plannedSeconds - remainingSeconds(day.focus))
     const minutes = Math.max(1, Math.round(actual / 60))
     const title = reason === 'abandoned' ? `放弃本轮工作，已进行${minutes}分钟` : `完成一轮工作，共${minutes}分钟`
-    return commit({ ...day, focus: null, timeline: [...day.timeline, timelineEvent(`focus.${reason}`, title)] })
+    const settings = await this.getTimerSettings()
+    const completed = day.timeline.filter((event) => event.type !== 'focus.abandoned' && event.type.startsWith('focus.') && ['focus.elapsed', 'focus.early_complete'].includes(event.type)).length + 1
+    const long = completed % settings.longBreakInterval === 0
+    const restMinutes = long ? settings.longBreakMinutes : settings.shortBreakMinutes
+    const rest = reason !== 'abandoned' && settings.autoStartBreak ? {
+      id: id(), restKind: long ? 'long' as const : 'short' as const, status: 'running' as const,
+      plannedSeconds: restMinutes * 60, remainingSeconds: restMinutes * 60,
+      targetEndAt: new Date(Date.now() + restMinutes * 60_000).toISOString(), startedAt: new Date().toISOString(),
+    } : null
+    return commit({ ...day, focus: null, rest, timeline: [...day.timeline, timelineEvent(`focus.${reason}`, title)] })
+  }
+
+  async pauseRest(workDate: string) {
+    const day = loadDay(workDate)
+    if (!day.rest || day.rest.status !== 'running') throw new Error('当前没有可暂停的休息')
+    const remaining = remainingSeconds(day.rest)
+    return commit({ ...day, rest: { ...day.rest, status: 'paused', remainingSeconds: remaining, targetEndAt: null } })
+  }
+
+  async resumeRest(workDate: string) {
+    const day = loadDay(workDate)
+    if (!day.rest || day.rest.status !== 'paused') throw new Error('当前没有已暂停的休息')
+    return commit({ ...day, rest: { ...day.rest, status: 'running', targetEndAt: new Date(Date.now() + day.rest.remainingSeconds * 1000).toISOString() } })
+  }
+
+  async completeRest(workDate: string) {
+    const day = loadDay(workDate)
+    if (!day.rest) throw new Error('当前没有进行中的休息')
+    return commit({ ...day, rest: null })
+  }
+
+  async skipRest(workDate: string) { return this.completeRest(workDate) }
+
+  async getTimerSettings(): Promise<TimerSettings> {
+    const raw = localStorage.getItem('worklog.timer.settings')
+    return raw ? JSON.parse(raw) as TimerSettings : { workMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakInterval: 4, autoStartBreak: true }
+  }
+
+  async saveTimerSettings(settings: TimerSettings) {
+    localStorage.setItem('worklog.timer.settings', JSON.stringify(settings))
+    return settings
   }
 
   async previewEndOfDay(workDate: string): Promise<EndOfDayPreview> {

@@ -42,11 +42,24 @@ pub struct FocusSession {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct RestSession {
+    pub id: String,
+    pub rest_kind: String,
+    pub status: String,
+    pub planned_seconds: i64,
+    pub remaining_seconds: i64,
+    pub target_end_at: Option<String>,
+    pub started_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DayState {
     pub work_date: String,
     pub tasks: Vec<DayTask>,
     pub timeline: Vec<TimelineEvent>,
     pub focus: Option<FocusSession>,
+    pub rest: Option<RestSession>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

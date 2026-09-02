@@ -4,11 +4,12 @@ mod db;
 mod model;
 mod notes;
 mod obsidian;
+mod timer;
 
 use rusqlite::Connection;
 use serde::Serialize;
 use std::{fs, sync::Mutex};
-use tauri::{Manager, State};
+use tauri::{menu::{Menu, MenuItem}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}, Manager, State};
 
 pub(crate) struct Database(pub(crate) Mutex<Connection>);
 
@@ -32,15 +33,47 @@ fn healthcheck(database: State<'_, Database>) -> Result<Healthcheck, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&app_dir)?;
             let connection = db::open_database(&app_dir.join("worklog.db"))?;
-            obsidian::initialize(&connection)?;
-            closing::initialize(&connection)?;
-            notes::initialize(&connection)?;
             app.manage(Database(Mutex::new(connection)));
+
+            let open_item = MenuItem::with_id(app, "open", "打开 Worklog", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+            let mut tray = TrayIconBuilder::new()
+                .tooltip("Worklog")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.build(app)?;
+            timer::start_background(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -54,6 +87,12 @@ pub fn run() {
             commands::resume_focus,
             commands::switch_focus,
             commands::complete_focus,
+            timer::get_timer_settings,
+            timer::save_timer_settings,
+            timer::pause_rest,
+            timer::resume_rest,
+            timer::complete_rest,
+            timer::skip_rest,
             closing::preview_end_of_day,
             closing::close_day,
             obsidian::get_obsidian_settings,

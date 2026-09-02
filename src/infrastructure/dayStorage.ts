@@ -7,7 +7,7 @@ export function loadDay(date: string): DayState {
   if (!raw) return emptyDay(date)
   try {
     const value = JSON.parse(raw) as DayState
-    return value.workDate === date ? value : emptyDay(date)
+    return value.workDate === date ? { ...value, rest: value.rest ?? null } : emptyDay(date)
   } catch {
     return emptyDay(date)
   }
