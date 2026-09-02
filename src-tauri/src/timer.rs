@@ -225,10 +225,11 @@ pub fn start_background(app: AppHandle) {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let transition = {
                 let database = app.state::<Database>();
-                match database.0.lock() {
+                let result = match database.0.lock() {
                     Ok(mut connection) => advance_expired(&mut connection).ok().flatten(),
                     Err(_) => None,
-                }
+                };
+                result
             };
             if let Some(notices) = transition {
                 show_notices(&app, &notices);
