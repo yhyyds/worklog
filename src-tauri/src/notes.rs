@@ -108,7 +108,7 @@ fn validate_title(value: &str) -> Result<String, String> {
 }
 
 fn path_text(path: &Path) -> String {
-    path.to_string_lossy().replace('\', "/")
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn modified_text(metadata: &fs::Metadata) -> String {
