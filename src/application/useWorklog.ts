@@ -16,7 +16,12 @@ export function useWorklog() {
     finally { setBusy(false) }
   }, [])
 
-  useEffect(() => { void run(() => gateway.getDaySnapshot(workDate)).catch(() => undefined) }, [gateway, run, workDate])
+  useEffect(() => {
+    const reload = () => { void run(() => gateway.getDaySnapshot(workDate)).catch(() => undefined) }
+    reload()
+    window.addEventListener('worklog:reload', reload)
+    return () => window.removeEventListener('worklog:reload', reload)
+  }, [gateway, run, workDate])
 
   return {
     day, workDate, busy, error, clearError: () => setError(null),

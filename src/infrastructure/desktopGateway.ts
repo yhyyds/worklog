@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { DayState, TaskStatus } from '../domain/model'
-import type { CreateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 
 export class DesktopGateway implements WorklogGateway {
   getDaySnapshot(workDate: string) { return invoke<DayState>('get_day_snapshot', { workDate }) }
@@ -12,4 +12,6 @@ export class DesktopGateway implements WorklogGateway {
   resumeFocus(workDate: string) { return invoke<DayState>('resume_focus', { input: { workDate } }) }
   switchFocus(workDate: string, taskId: string) { return invoke<DayState>('switch_focus', { input: { workDate, taskId } }) }
   completeFocus(workDate: string, reason: 'elapsed' | 'early_complete' | 'abandoned') { return invoke<DayState>('complete_focus', { input: { workDate, reason } }) }
+  previewEndOfDay(workDate: string) { return invoke<EndOfDayPreview>('preview_end_of_day', { workDate }) }
+  closeDay(input: CloseDayRequest) { return invoke<CloseDayResult>('close_day', { input }) }
 }
