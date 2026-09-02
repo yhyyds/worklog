@@ -1,0 +1,103 @@
+.obsidian-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 16px;
+  background: #6f5bd3;
+  color: white;
+  font-size: 22px;
+  box-shadow: 0 12px 28px rgba(53, 40, 112, .28);
+  cursor: pointer;
+}
+.obsidian-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 25, 31, .36);
+  backdrop-filter: blur(6px);
+}
+.obsidian-panel {
+  width: min(760px, 100%);
+  max-height: min(820px, 92vh);
+  overflow: auto;
+  border: 1px solid rgba(111, 91, 211, .15);
+  border-radius: 24px;
+  padding: 24px;
+  background: #fbfaf7;
+  box-shadow: 0 28px 80px rgba(32, 31, 41, .24);
+}
+.obsidian-panel > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.obsidian-panel h2 { margin: 4px 0 0; font-size: 26px; color: #24232a; }
+.obsidian-panel header small { color: #756f82; letter-spacing: .08em; }
+.obsidian-panel header button {
+  border: 0;
+  background: transparent;
+  font-size: 28px;
+  color: #77717f;
+  cursor: pointer;
+}
+.vault-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px;
+  border: 1px solid #e8e3f3;
+  border-radius: 16px;
+  background: white;
+}
+.vault-card div { min-width: 0; display: grid; gap: 6px; }
+.vault-card span, .vault-card small { color: #797382; font-size: 12px; }
+.vault-card strong { overflow: hidden; text-overflow: ellipsis; color: #312e3a; }
+.vault-card button, .obsidian-actions button {
+  flex: none;
+  border: 1px solid #d8d0f0;
+  border-radius: 11px;
+  padding: 10px 14px;
+  background: white;
+  color: #55459e;
+  font-weight: 650;
+  cursor: pointer;
+}
+.obsidian-actions { display: flex; justify-content: flex-end; gap: 10px; margin: 16px 0; }
+.obsidian-actions .sync-primary { border-color: #6f5bd3; background: #6f5bd3; color: white; }
+.obsidian-actions button:disabled, .vault-card button:disabled { opacity: .5; cursor: default; }
+.obsidian-notice, .obsidian-error, .obsidian-success {
+  padding: 13px 15px;
+  border-radius: 12px;
+  line-height: 1.55;
+}
+.obsidian-notice { background: #f0edf8; color: #534b68; }
+.obsidian-error { background: #fff0ef; color: #9d3630; }
+.obsidian-success { background: #eaf7ef; color: #286442; }
+.markdown-preview { overflow: hidden; border: 1px solid #e5e0eb; border-radius: 14px; background: #fff; }
+.markdown-preview > div { display: flex; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #eee9f1; color: #766f7e; }
+.markdown-preview code { overflow: hidden; text-overflow: ellipsis; color: #4d426f; }
+.markdown-preview pre {
+  max-height: 390px;
+  overflow: auto;
+  margin: 0;
+  padding: 18px;
+  white-space: pre-wrap;
+  font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: #37323e;
+}
+.obsidian-panel footer { margin-top: 16px; color: #7e7785; font-size: 12px; line-height: 1.6; }
+.obsidian-panel footer code { color: #5b4ba4; }
+@media (max-width: 700px) {
+  .obsidian-panel { padding: 18px; }
+  .vault-card { align-items: stretch; flex-direction: column; }
+  .obsidian-actions { flex-direction: column; }
+}

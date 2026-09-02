@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod model;
+mod obsidian;
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -29,10 +30,12 @@ fn healthcheck(database: State<'_, Database>) -> Result<Healthcheck, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&app_dir)?;
             let connection = db::open_database(&app_dir.join("worklog.db"))?;
+            obsidian::initialize(&connection)?;
             app.manage(Database(Mutex::new(connection)));
             Ok(())
         })
@@ -47,6 +50,10 @@ pub fn run() {
             commands::resume_focus,
             commands::switch_focus,
             commands::complete_focus,
+            obsidian::get_obsidian_settings,
+            obsidian::save_obsidian_settings,
+            obsidian::preview_daily_note,
+            obsidian::sync_daily_note,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Worklog");
