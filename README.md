@@ -2,16 +2,19 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M2 SQLite 核心
+## 当前里程碑：M3 Obsidian 同步
 
 - React + TypeScript + Vite 界面。
 - Tauri 2 + Rust Windows 桌面层。
-- SQLite 管理桌面端任务、事件、工作想法和番茄钟。
-- 每个写操作在同一事务中更新状态并追加不可变事件。
-- 浏览器开发模式使用 localStorage 适配器，桌面模式使用 SQLite 适配器。
+- SQLite 管理任务、事件、工作想法、番茄钟与同步状态。
 - 四象限任务、两级子任务、每日编号和永久 ID。
 - 绑定任务的番茄钟，支持暂停、恢复、切换和结束。
-- Windows CI 同时运行前端检查与 Rust 事务测试。
+- 可选择本地 Obsidian Vault，预览并同步今日日记。
+- 默认写入 `工作日志/YYYY/YYYY-MM/YYYY-MM-DD.md`。
+- 只替换受管理 Markdown 区块，保留所有人工内容。
+- 标记异常时拒绝覆盖；覆盖前备份并采用原子文件替换。
+- 隐藏/草稿事件不进入日记，严格控制回顾噪音。
+- Windows CI 同时运行前端检查与 Rust 测试。
 
 ## 本地开发
 
@@ -42,4 +45,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - Obsidian 只作为 Markdown 查看、补充与回顾入口。
 - 自动生成内容只写入受管理区块，保留人工补充。
 
-详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md) 和 [M2 实现说明](docs/M2_IMPLEMENTATION.md)。
+详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M2 实现说明](docs/M2_IMPLEMENTATION.md) 和 [M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md)。
