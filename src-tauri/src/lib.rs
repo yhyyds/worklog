@@ -2,6 +2,7 @@ mod closing;
 mod commands;
 mod db;
 mod model;
+mod notes;
 mod obsidian;
 
 use rusqlite::Connection;
@@ -38,6 +39,7 @@ pub fn run() {
             let connection = db::open_database(&app_dir.join("worklog.db"))?;
             obsidian::initialize(&connection)?;
             closing::initialize(&connection)?;
+            notes::initialize(&connection)?;
             app.manage(Database(Mutex::new(connection)));
             Ok(())
         })
@@ -58,6 +60,9 @@ pub fn run() {
             obsidian::save_obsidian_settings,
             obsidian::preview_daily_note,
             obsidian::sync_daily_note,
+            notes::list_vault_notes,
+            notes::read_vault_note,
+            notes::save_vault_note,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Worklog");
