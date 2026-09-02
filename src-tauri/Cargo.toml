@@ -1,6 +1,6 @@
 [package]
 name = "worklog"
-version = "0.7.0"
+version = "0.7.1"
 description = "Local-first work journal, planner and focus timer"
 authors = ["Worklog contributors"]
 license = "MIT"

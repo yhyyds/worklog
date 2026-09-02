@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { remainingSeconds, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
 import { useWorklog } from './application/useWorklog'
+import { NAV_ITEMS, navigationAction, type NavItem } from './application/navigation'
 
 const quadrants: Array<{ key: string; title: string; note: string; importance: Importance; urgency: Urgency }> = [
   { key: 'important-urgent', title: '重要 · 紧急', note: '今天优先推进', importance: 'important', urgency: 'urgent' },
@@ -8,7 +9,6 @@ const quadrants: Array<{ key: string; title: string; note: string; importance: I
   { key: 'secondary-urgent', title: '次要 · 紧急', note: '快速处理或委派', importance: 'secondary', urgency: 'urgent' },
   { key: 'secondary-relaxed', title: '次要 · 稍缓', note: '保持边界，适时整理', importance: 'secondary', urgency: 'relaxed' },
 ]
-const nav = ['我的一天', '专注', '工作想法', '随笔', 'Obsidian', '设置']
 const entryLabels: Record<EntryType, string> = { progress: '进度', idea: '想法', decision: '决定', blocker: '阻塞', result: '结果' }
 const levelLabels: Record<ReviewLevel, string> = { key: '关键', normal: '普通', scratch: '草稿' }
 const formatClock = (iso: string) => new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
@@ -29,6 +29,7 @@ async function notify(title: string, body: string) {
 function App() {
   const worklog = useWorklog()
   const { day } = worklog
+  const [activeNav, setActiveNav] = useState<NavItem>('我的一天')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [childFor, setChildFor] = useState<string | null>(null)
   const [tick, setTick] = useState(Date.now())
@@ -78,15 +79,29 @@ function App() {
     setThought('')
   }
 
+  function navigate(item: NavItem) {
+    setActiveNav(item)
+    const action = navigationAction(item)
+    window.requestAnimationFrame(() => {
+      if (action === 'top') window.scrollTo({ top: 0, behavior: 'smooth' })
+      else if (action === 'focus') document.querySelector<HTMLElement>('.focus-strip')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      else if (action === 'thoughts') {
+        const input = document.querySelector<HTMLTextAreaElement>('.thought-form textarea')
+        input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        input?.focus()
+      } else window.dispatchEvent(new Event(action))
+    })
+  }
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">W</span><div><strong>Worklog</strong><small>把一天自然记录下来</small></div></div>
-      <nav>{nav.map((item, index) => <button key={item} className={index === 0 ? 'active' : ''}><span>{['☀', '◉', '◇', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
+      <nav>{NAV_ITEMS.map((item, index) => <button type="button" key={item} className={activeNav === item ? 'active' : ''} aria-current={activeNav === item ? 'page' : undefined} onClick={() => navigate(item)}><span>{['☀', '◉', '◇', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
       <div className="sidebar-foot"><span className="status-dot"/>SQLite 本地数据库</div>
     </aside>
 
     <main>
-      <header className="topbar"><div><p>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p><h1>我的一天</h1></div><div className="top-actions"><span>{day.tasks.filter((task) => task.status === 'completed').length}/{day.tasks.length} 已完成</span><button className="round">•••</button></div></header>
+      <header className="topbar"><div><p>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p><h1>{activeNav}</h1></div><div className="top-actions"><span>{day.tasks.filter((task) => task.status === 'completed').length}/{day.tasks.length} 已完成</span><button className="round">•••</button></div></header>
       {worklog.error && <div className="error-banner"><span>{worklog.error}</span><button onClick={worklog.clearError}>关闭</button></div>}
 
       <section className={`focus-strip ${day.rest ? 'resting' : ''}`}>

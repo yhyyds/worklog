@@ -97,6 +97,7 @@ pub fn run() {
             closing::close_day,
             obsidian::get_obsidian_settings,
             obsidian::save_obsidian_settings,
+            obsidian::save_daily_root,
             obsidian::preview_daily_note,
             obsidian::sync_daily_note,
             notes::list_vault_notes,

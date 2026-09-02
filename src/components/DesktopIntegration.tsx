@@ -12,6 +12,12 @@ export default function DesktopIntegration() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
+    const handleOpen = () => setOpen(true)
+    window.addEventListener('worklog:open-settings', handleOpen)
+    return () => window.removeEventListener('worklog:open-settings', handleOpen)
+  }, [])
+
+  useEffect(() => {
     if (!desktop) return
     let disposed = false
     const windowHandle = getCurrentWindow()

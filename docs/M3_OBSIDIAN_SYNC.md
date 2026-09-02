@@ -4,11 +4,13 @@
 
 M3 将 SQLite 中的每日任务与事件投影为 Obsidian Markdown，同时保持 SQLite 为事实源。
 
-默认路径：
+日记根目录由用户在 Obsidian 工作区内选择，根目录本身也可以是工作区根目录。输出结构为：
 
 ```text
-<Vault>/工作日志/YYYY/YYYY-MM/YYYY-MM-DD.md
+<用户选择的日记根目录>/YYYY/YYYY-MM/YYYY-MM-DD.md
 ```
+
+软件不会自动添加“工作日志”或其他固定目录。旧版本尚未自定义路径时保存的默认“工作日志”值会按工作区根目录处理。
 
 ## 安全边界
 

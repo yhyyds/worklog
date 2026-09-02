@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 use tauri::State;
 
@@ -23,7 +23,7 @@ pub struct ObsidianSettings {
 
 impl Default for ObsidianSettings {
     fn default() -> Self {
-        Self { vault_path: None, daily_root: "工作日志".to_string() }
+        Self { vault_path: None, daily_root: String::new() }
     }
 }
 
@@ -54,10 +54,27 @@ pub(crate) fn load_settings(connection: &Connection) -> Result<ObsidianSettings,
         .query_row("SELECT value_json FROM app_settings WHERE key=?1", [SETTINGS_KEY], |row| row.get(0))
         .optional()
         .map_err(|error| error.to_string())?;
-    stored
+    let mut settings: ObsidianSettings = stored
         .map(|value| serde_json::from_str(&value).map_err(|error| format!("Obsidian 设置损坏：{error}")))
-        .transpose()
-        .map(|value| value.unwrap_or_default())
+        .transpose()?
+        .unwrap_or_default();
+    if settings.daily_root == "工作日志" {
+        settings.daily_root.clear();
+    }
+    validate_daily_root(&settings.daily_root)?;
+    Ok(settings)
+}
+
+fn persist_settings(connection: &Connection, settings: &ObsidianSettings) -> Result<(), String> {
+    let json = serde_json::to_string(settings).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "INSERT INTO app_settings(key,value_json,updated_at_utc) VALUES(?1,?2,?3)
+             ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at_utc=excluded.updated_at_utc",
+            params![SETTINGS_KEY, json, db::now_iso()],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn save_settings_core(connection: &Connection, vault_path: String) -> Result<ObsidianSettings, String> {
@@ -72,18 +89,37 @@ fn save_settings_core(connection: &Connection, vault_path: String) -> Result<Obs
         vault_path: Some(path.to_string_lossy().to_string()),
         ..ObsidianSettings::default()
     };
-    let json = serde_json::to_string(&settings).map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "INSERT INTO app_settings(key,value_json,updated_at_utc) VALUES(?1,?2,?3)
-             ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at_utc=excluded.updated_at_utc",
-            params![SETTINGS_KEY, json, db::now_iso()],
-        )
-        .map_err(|error| error.to_string())?;
+    persist_settings(connection, &settings)?;
+    Ok(settings)
+}
+
+fn validate_daily_root(value: &str) -> Result<(), String> {
+    let path = Path::new(value);
+    if path.is_absolute() || path.components().any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))) {
+        return Err("日记根目录必须位于 Obsidian 工作区内".to_string());
+    }
+    Ok(())
+}
+
+fn save_daily_root_core(connection: &Connection, daily_path: String) -> Result<ObsidianSettings, String> {
+    let mut settings = load_settings(connection)?;
+    let vault_text = settings.vault_path.clone().ok_or("请先选择 Obsidian 工作区")?;
+    let vault = fs::canonicalize(&vault_text).map_err(|error| format!("无法访问 Obsidian 工作区：{error}"))?;
+    let selected = PathBuf::from(daily_path.trim());
+    if !selected.is_absolute() || !selected.is_dir() {
+        return Err("日记根目录必须是已存在的绝对文件夹".to_string());
+    }
+    let selected = fs::canonicalize(selected).map_err(|error| format!("无法访问日记根目录：{error}"))?;
+    let relative = selected.strip_prefix(&vault)
+        .map_err(|_| "日记根目录必须位于所选 Obsidian 工作区内".to_string())?;
+    settings.daily_root = relative.to_string_lossy().replace('\\', "/");
+    validate_daily_root(&settings.daily_root)?;
+    persist_settings(connection, &settings)?;
     Ok(settings)
 }
 
 pub fn daily_relative_path(settings: &ObsidianSettings, work_date: &str) -> Result<PathBuf, String> {
+    validate_daily_root(&settings.daily_root)?;
     let date = chrono::NaiveDate::parse_from_str(work_date, "%Y-%m-%d")
         .map_err(|_| "日期必须为 YYYY-MM-DD".to_string())?;
     Ok(PathBuf::from(&settings.daily_root)
@@ -350,6 +386,12 @@ pub fn save_obsidian_settings(database: State<'_, Database>, vault_path: String)
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub fn save_daily_root(database: State<'_, Database>, daily_path: String) -> Result<ObsidianSettings, String> {
+    let connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
+    save_daily_root_core(&connection, daily_path)
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub fn preview_daily_note(database: State<'_, Database>, work_date: String) -> Result<DailyNotePreview, String> {
     let connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
     preview_core(&connection, &work_date)
@@ -409,8 +451,15 @@ mod tests {
     fn daily_path_matches_obsidian_layout() {
         assert_eq!(
             daily_relative_path(&settings(), "2026-09-02").unwrap(),
-            PathBuf::from("工作日志").join("2026").join("2026-09").join("2026-09-02.md")
+            PathBuf::from("2026").join("2026-09").join("2026-09-02.md")
         );
+    }
+
+    #[test]
+    fn unsafe_daily_root_is_rejected() {
+        let mut value = settings();
+        value.daily_root = "../outside".to_string();
+        assert!(daily_relative_path(&value, "2026-09-02").is_err());
     }
 
     #[test]

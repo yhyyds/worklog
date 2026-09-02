@@ -101,3 +101,8 @@
   .vault-card { align-items: stretch; flex-direction: column; }
   .obsidian-actions { flex-direction: column; }
 }
+
+.vault-card .vault-actions { flex: none; display: flex; gap: 8px; }
+@media (max-width: 700px) {
+  .vault-card .vault-actions { align-items: stretch; flex-direction: column; }
+}
