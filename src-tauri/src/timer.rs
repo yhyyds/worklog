@@ -270,6 +270,19 @@ pub fn resume_rest(database: State<'_, Database>, input: FocusActionInput) -> Re
 }
 
 #[tauri::command]
+pub fn complete_rest(app: AppHandle, database: State<'_, Database>, input: FocusActionInput) -> Result<DayState, String> {
+    let mut connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
+    let day = finish_rest_core(&mut connection, &input.work_date, false)?;
+    drop(connection);
+    show_notices(&app, &[Notice {
+        title: "休息结束".to_string(),
+        body: "选择下一项任务，准备开始新一轮工作。".to_string(),
+    }]);
+    let _ = app.emit("worklog-timer-changed", ());
+    Ok(day)
+}
+
+#[tauri::command]
 pub fn skip_rest(app: AppHandle, database: State<'_, Database>, input: FocusActionInput) -> Result<DayState, String> {
     let mut connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
     let day = finish_rest_core(&mut connection, &input.work_date, true)?;
