@@ -1,0 +1,72 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Verify release version
+        run: npm run check:version -- "${{ github.ref_name }}"
+
+      - name: Run frontend checks
+        run: npm run check
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and publish Windows installer
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Worklog ${{ github.ref_name }}'
+          releaseBody: |
+            Windows x64 正式安装包。
+
+            - 当前用户安装，无需管理员权限
+            - 已内置 WebView2 离线安装程序
+            - 所有业务数据保存在本地
+            - 请使用 SHA256SUMS.txt 校验下载文件
+
+            当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
+          releaseDraft: false
+          prerelease: false
+          args: --bundles nsis
+
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer not found" }
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii SHA256SUMS.txt
+
+      - name: Upload checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" SHA256SUMS.txt --clobber

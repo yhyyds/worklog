@@ -1,13 +1,15 @@
 {
   "name": "worklog",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "check": "npm run test && npm run build",
+    "check:version": "node scripts/check-version.mjs",
+    "check": "npm run check:version && npm run test && npm run build",
+    "bundle:windows": "tauri build --bundles nsis",
     "tauri": "tauri"
   },
   "dependencies": {
