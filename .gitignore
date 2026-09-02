@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+*.db
+*.db-shm
+*.db-wal
+.env
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
