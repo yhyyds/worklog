@@ -86,11 +86,11 @@ export class BrowserGateway implements WorklogGateway {
     const settings = await this.getTimerSettings()
     const completed = day.timeline.filter((event) => event.type !== 'focus.abandoned' && event.type.startsWith('focus.') && ['focus.elapsed', 'focus.early_complete'].includes(event.type)).length + 1
     const long = completed % settings.longBreakInterval === 0
-    const minutes = long ? settings.longBreakMinutes : settings.shortBreakMinutes
+    const restMinutes = long ? settings.longBreakMinutes : settings.shortBreakMinutes
     const rest = reason !== 'abandoned' && settings.autoStartBreak ? {
       id: id(), restKind: long ? 'long' as const : 'short' as const, status: 'running' as const,
-      plannedSeconds: minutes * 60, remainingSeconds: minutes * 60,
-      targetEndAt: new Date(Date.now() + minutes * 60_000).toISOString(), startedAt: new Date().toISOString(),
+      plannedSeconds: restMinutes * 60, remainingSeconds: restMinutes * 60,
+      targetEndAt: new Date(Date.now() + restMinutes * 60_000).toISOString(), startedAt: new Date().toISOString(),
     } : null
     return commit({ ...day, focus: null, rest, timeline: [...day.timeline, timelineEvent(`focus.${reason}`, title)] })
   }

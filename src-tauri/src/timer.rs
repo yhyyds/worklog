@@ -2,7 +2,7 @@ use crate::{commands, db, model::{DayState, FocusActionInput}, Database};
 use chrono::{Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 const SETTINGS_KEY: &str = "focus_timer";
