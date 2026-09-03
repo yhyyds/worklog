@@ -2,12 +2,14 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M7 Windows 正式发行
+## 当前里程碑：M8 集中设置
 
-- React + TypeScript + Vite 界面。
+- React + TypeScript + Vite 界面；左侧入口收敛为“我的一天 / 随笔 / Obsidian / 设置”。
 - Tauri 2 + Rust Windows 桌面层，SQLite 保存全部结构化数据。
 - 四象限任务、两级子任务、每日编号和永久 ID。
 - 绑定任务的完整番茄钟与休息生命周期，支持后台计时、系统通知和托盘运行。
+- 独立设置界面集中管理番茄钟、本地 SQLite 数据目录、Obsidian 工作区和日记根目录。
+- 本地数据库支持迁移并即时切换，新位置生效时保留原数据库作为安全备份。
 - 可选择本地 Obsidian Vault，安全预览、编辑并同步 Markdown。
 - 日记根目录由用户在 Obsidian 工作区内指定，输出 `YYYY/YYYY-MM/YYYY-MM-DD.md`，只替换受管理区块。
 - 工作记录按回顾等级投影，隐藏草稿与机械事件，严格控制噪音。
