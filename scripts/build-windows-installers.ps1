@@ -39,8 +39,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Copy-LatestInstaller "Worklog-$version-windows-x64-with-webview2-setup.exe"
 
-$installers = @(Get-ChildItem -Path (Join-Path $outputPath "*.exe") | Sort-Object Name)
+$installers = @(Get-ChildItem -Path (Join-Path $outputPath "Worklog-$version-windows-x64-*-setup.exe") | Sort-Object Name)
 if ($installers.Count -ne 2) {
-  throw "Expected exactly two Windows installers, found $($installers.Count)"
+  throw "Expected exactly two Windows installers for version $version, found $($installers.Count)"
 }
 $installers
