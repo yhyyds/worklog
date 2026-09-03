@@ -37,36 +37,37 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build and publish Windows installer
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Worklog ${{ github.ref_name }}'
-          releaseBody: |
-            Windows x64 正式安装包。
+      - name: Build both Windows installers
+        run: npm run bundle:windows
 
-            - 当前用户安装，无需管理员权限
-            - 已内置 WebView2 离线安装程序
-            - 所有业务数据保存在本地
-            - 请使用 SHA256SUMS.txt 校验下载文件
-
-            当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
-          releaseDraft: false
-          prerelease: false
-          args: --bundles nsis
-
-      - name: Generate SHA-256 checksum
+      - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
-          if (-not $installer) { throw "NSIS installer not found" }
-          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-ChildItem "artifacts/*.exe" |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } |
+            Set-Content -Encoding ascii SHA256SUMS.txt
 
-      - name: Upload checksum
+      - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" SHA256SUMS.txt --clobber
+        run: |
+          $notes = @"
+          Windows x64 提供两种当前用户安装包：
+
+          - no-webview2：不内置 WebView2 运行时；系统缺少运行时时，安装过程需要联网下载。
+          - with-webview2：内置 WebView2 离线安装程序，可在无网络环境安装，体积较大。
+          - 两种安装包的业务功能和本地数据格式完全相同。
+          - 请使用 SHA256SUMS.txt 校验下载文件。
+
+          当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
+          "@
+          $notes | Set-Content -Encoding utf8 RELEASE_BODY.md
+          $assets = @(Get-ChildItem "artifacts/*.exe" | Sort-Object Name | ForEach-Object { $_.FullName })
+          $assets += (Resolve-Path "SHA256SUMS.txt").Path
+          gh release create "${{ github.ref_name }}" @assets --verify-tag --title "Worklog ${{ github.ref_name }}" --notes-file RELEASE_BODY.md
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed" }

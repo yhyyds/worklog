@@ -2,6 +2,14 @@
 
 Worklog 遵循语义化版本。当前仍处于 1.0 前，次版本号代表一个可验证的产品里程碑。
 
+## [0.9.2] - 2026-09-03
+
+### Changed
+
+- 日记轮次改用 Obsidian 原生 Markdown 嵌套列表；移除 `<details>` 与 `<summary>`，时间轴紧贴父项并缩进一层。
+- Windows 发行同时生成不内置 WebView2 的轻量安装包与内置 WebView2 的离线安装包。
+- CI 和 GitHub Release 对两种安装包同时生成 SHA-256 校验。
+
 ## [0.7.1] - 2026-09-02
 
 ### Fixed
