@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { remainingSeconds, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
+import { incompleteFirst, remainingSeconds, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
 import { useWorklog } from './application/useWorklog'
 import { NAV_ITEMS, navigationAction, type NavItem } from './application/navigation'
 
@@ -29,9 +29,11 @@ async function notify(title: string, body: string) {
 function App() {
   const worklog = useWorklog()
   const { day } = worklog
-  const [activeNav, setActiveNav] = useState<NavItem>('我的一天')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [childFor, setChildFor] = useState<string | null>(null)
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [pauseOpen, setPauseOpen] = useState(false)
+  const [pauseReason, setPauseReason] = useState('')
   const [tick, setTick] = useState(Date.now())
   const [thought, setThought] = useState('')
   const [entryType, setEntryType] = useState<EntryType>('idea')
@@ -44,7 +46,7 @@ function App() {
   }, [])
 
   const activeTask = useMemo(() => day.tasks.find((task) => task.id === day.focus?.taskId) ?? null, [day])
-  const selectedTask = day.tasks.find((task) => task.id === selectedTaskId) ?? day.tasks.find((task) => task.status !== 'completed') ?? null
+  const selectedTask = day.tasks.find((task) => !task.parentId && task.id === selectedTaskId) ?? day.tasks.find((task) => !task.parentId && task.status !== 'completed') ?? null
   const left = day.rest ? remainingSeconds(day.rest, tick) : day.focus ? remainingSeconds(day.focus, tick) : 1500
 
   useEffect(() => {
@@ -62,8 +64,22 @@ function App() {
     setChildFor(null)
   }
 
+  function updateTask(task: DayTask, title: string, plannedStart: string | null, plannedEnd: string | null) {
+    ignore(worklog.updateTask(task.id, title, plannedStart, plannedEnd).then(() => setEditingTaskId(null)))
+  }
+
   function toggleTask(task: DayTask) {
     ignore(worklog.setTaskStatus(task.id, task.status === 'completed' ? 'not_started' : 'completed'))
+  }
+
+  function pauseFocus(event: FormEvent) {
+    event.preventDefault()
+    const reason = pauseReason.trim()
+    if (!reason) return
+    ignore(worklog.pauseFocus(reason).then(() => {
+      setPauseReason('')
+      setPauseOpen(false)
+    }))
   }
 
   function chooseFocusTask(taskId: string) {
@@ -80,7 +96,6 @@ function App() {
   }
 
   function navigate(item: NavItem) {
-    setActiveNav(item)
     const action = navigationAction(item)
     window.requestAnimationFrame(() => {
       if (action === 'top') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -91,22 +106,22 @@ function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">W</span><div><strong>Worklog</strong><small>把一天自然记录下来</small></div></div>
-      <nav>{NAV_ITEMS.map((item, index) => <button type="button" key={item} className={activeNav === item ? 'active' : ''} aria-current={activeNav === item ? 'page' : undefined} onClick={() => navigate(item)}><span>{['☀', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
+      <nav>{NAV_ITEMS.map((item, index) => <button type="button" key={item} className={item === '我的一天' ? 'active' : ''} aria-current={item === '我的一天' ? 'page' : undefined} onClick={() => navigate(item)}><span>{['☀', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
       <div className="sidebar-foot"><span className="status-dot"/>SQLite 本地数据库</div>
     </aside>
 
     <main>
-      <header className="topbar"><div><p>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p><h1>{activeNav}</h1></div><div className="top-actions"><span>{day.tasks.filter((task) => task.status === 'completed').length}/{day.tasks.length} 已完成</span><button className="round">•••</button></div></header>
+      <header className="topbar"><div><p>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p><h1>我的一天</h1></div><div className="top-actions"><span>{day.tasks.filter((task) => task.status === 'completed').length}/{day.tasks.length} 已完成</span><button className="round">•••</button></div></header>
       {worklog.error && <div className="error-banner"><span>{worklog.error}</span><button onClick={worklog.clearError}>关闭</button></div>}
 
       <section className={`focus-strip ${day.rest ? 'resting' : ''}`}>
         <div className="timer-ring"><strong>{formatSeconds(left)}</strong><span>{day.rest ? (day.rest.status === 'running' ? '休息中' : '休息暂停') : day.focus ? (day.focus.status === 'running' ? '专注中' : '已暂停') : '准备专注'}</span></div>
         <div className="focus-copy"><small>{day.rest ? '当前休息' : '当前专注'}</small><h2>{day.rest ? (day.rest.restKind === 'long' ? '长休息 · 让注意力真正恢复' : '短休息 · 离开屏幕活动一下') : activeTask ? `${activeTask.displayCode} ${activeTask.title}` : selectedTask ? `${selectedTask.displayCode} ${selectedTask.title}` : '先选择一项今日任务'}</h2><p>{day.rest ? '休息不会写入每日回顾；结束后再选择下一项任务。' : day.focus ? '记录会自动关联到当前任务' : '选择任务后，一次点击即可开始专注'}</p>
-          {!day.rest && day.tasks.some((task) => task.status !== 'completed') && <select className="focus-picker" value={day.focus?.taskId ?? selectedTask?.id ?? ''} onChange={(event) => chooseFocusTask(event.target.value)}>{day.tasks.filter((task) => task.status !== 'completed').map((task) => <option key={task.id} value={task.id}>{task.displayCode} {task.title}</option>)}</select>}
+          {!day.rest && day.tasks.some((task) => !task.parentId && task.status !== 'completed') && <select className="focus-picker" value={day.focus?.taskId ?? selectedTask?.id ?? ''} onChange={(event) => chooseFocusTask(event.target.value)}>{day.tasks.filter((task) => !task.parentId && task.status !== 'completed').map((task) => <option key={task.id} value={task.id}>{task.displayCode} {task.title}</option>)}</select>}
         </div>
         <div className="focus-actions">
           {!day.focus && !day.rest && selectedTask && <button disabled={worklog.busy} className="primary" onClick={() => ignore(worklog.startFocus(selectedTask.id))}>▶ 开始专注</button>}
-          {day.focus && <><button disabled={worklog.busy} className="secondary" onClick={() => ignore(day.focus?.status === 'running' ? worklog.pauseFocus() : worklog.resumeFocus())}>{day.focus.status === 'running' ? 'Ⅱ 暂停' : '▶ 继续'}</button><button className="text-button" onClick={() => ignore(worklog.completeFocus('early_complete'))}>提前完成</button><button className="text-button danger" onClick={() => ignore(worklog.completeFocus('abandoned'))}>放弃</button></>}
+          {day.focus && <><button disabled={worklog.busy} className="secondary" onClick={() => day.focus?.status === 'running' ? setPauseOpen(true) : ignore(worklog.resumeFocus())}>{day.focus.status === 'running' ? 'Ⅱ 暂停' : '▶ 继续'}</button><button className="text-button" onClick={() => ignore(worklog.completeFocus('early_complete'))}>提前完成</button><button className="text-button danger" onClick={() => ignore(worklog.completeFocus('abandoned'))}>放弃</button></>}
           {day.rest && <><button disabled={worklog.busy} className="secondary" onClick={() => ignore(day.rest?.status === 'running' ? worklog.pauseRest() : worklog.resumeRest())}>{day.rest.status === 'running' ? 'Ⅱ 暂停休息' : '▶ 继续休息'}</button><button className="text-button" onClick={() => ignore(worklog.skipRest())}>跳过休息</button></>}
         </div>
       </section>
@@ -115,16 +130,29 @@ function App() {
         <section className="tasks-panel">
           <div className="section-heading"><div><h2>今日安排</h2><p>按重要性与紧急性组织，不让任务列表变得太吵</p></div><TaskForm compact onCreate={createTask}/></div>
           <div className="quadrants">{quadrants.map((quadrant) => {
-            const tasks = day.tasks.filter((task) => !task.parentId && task.importance === quadrant.importance && task.urgency === quadrant.urgency)
+            const tasks = incompleteFirst(day.tasks.filter((task) => !task.parentId && task.importance === quadrant.importance && task.urgency === quadrant.urgency))
             return <article className="quadrant" key={quadrant.key}>
               <header><div><h3>{quadrant.title}</h3><small>{quadrant.note}</small></div><span>{tasks.length}</span></header>
-              <div className="task-list">{tasks.length === 0 && <p className="empty">暂时没有事项</p>}{tasks.map((task) => <div key={task.id} className={`task-card ${task.status === 'completed' ? 'done' : ''} ${selectedTask?.id === task.id ? 'selected' : ''}`} onClick={() => setSelectedTaskId(task.id)}>
-                <button className="check" onClick={(event) => { event.stopPropagation(); toggleTask(task) }}>{task.status === 'completed' ? '✓' : ''}</button>
-                <div className="task-body"><strong><span>{task.displayCode}</span> {task.title}</strong>{task.plannedStart && <small>{task.plannedStart}–{task.plannedEnd}</small>}
-                  {day.tasks.filter((child) => child.parentId === task.id).map((child) => <div className="child" key={child.id}><button className="mini-check" onClick={(event) => { event.stopPropagation(); toggleTask(child) }}>{child.status === 'completed' ? '✓' : ''}</button><span className={child.status === 'completed' ? 'strike' : ''}>{child.displayCode} {child.title}</span></div>)}
-                  {childFor === task.id ? <TaskForm parentId={task.id} importance={task.importance} urgency={task.urgency} onCreate={createTask}/> : <button className="add-child" onClick={(event) => { event.stopPropagation(); setChildFor(task.id) }}>＋ 新建子任务</button>}
+              <div className="task-list">{tasks.length === 0 && <p className="empty">暂时没有事项</p>}{tasks.map((task) => {
+                const children = incompleteFirst(day.tasks.filter((child) => child.parentId === task.id))
+                return <div key={task.id} className={`task-card ${task.status === 'completed' ? 'done' : ''} ${selectedTask?.id === task.id ? 'selected' : ''}`} onClick={() => setSelectedTaskId(task.id)}>
+                  <button className="check" onClick={(event) => { event.stopPropagation(); toggleTask(task) }}>{task.status === 'completed' ? '✓' : ''}</button>
+                  <div className="task-body">
+                    {editingTaskId === task.id ? <TaskEditForm task={task} onSave={updateTask} onCancel={() => setEditingTaskId(null)}/> : <>
+                      <div className="task-title-row"><strong><span>{task.displayCode}</span> {task.title}</strong><button type="button" className="edit-task" onClick={(event) => { event.stopPropagation(); setEditingTaskId(task.id) }}>编辑</button></div>
+                      {task.plannedStart && <small>{task.plannedStart}–{task.plannedEnd}</small>}
+                    </>}
+                    {children.map((child) => editingTaskId === child.id
+                      ? <TaskEditForm key={child.id} task={child} onSave={updateTask} onCancel={() => setEditingTaskId(null)}/>
+                      : <div className="child" key={child.id}>
+                        <button className="mini-check" onClick={(event) => { event.stopPropagation(); toggleTask(child) }}>{child.status === 'completed' ? '✓' : ''}</button>
+                        <span className={child.status === 'completed' ? 'strike' : ''}>{child.displayCode} {child.title}{child.plannedStart ? ` · ${child.plannedStart}–${child.plannedEnd}` : ''}</span>
+                        <button type="button" className="edit-task child-edit" onClick={(event) => { event.stopPropagation(); setEditingTaskId(child.id) }}>编辑</button>
+                      </div>)}
+                    {childFor === task.id ? <TaskForm parentId={task.id} importance={task.importance} urgency={task.urgency} onCreate={createTask}/> : <button className="add-child" onClick={(event) => { event.stopPropagation(); setChildFor(task.id) }}>＋ 新建子任务</button>}
+                  </div>
                 </div>
-              </div>)}</div>
+              })}</div>
             </article>
           })}</div>
         </section>
@@ -136,6 +164,14 @@ function App() {
         </aside>
       </div>
     </main>
+    {pauseOpen && <div className="pause-reason-backdrop" onMouseDown={() => setPauseOpen(false)}>
+      <form className="pause-reason-dialog" onSubmit={pauseFocus} onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><small>FOCUS PAUSE</small><h2>为什么暂停？</h2></div><button type="button" onClick={() => setPauseOpen(false)}>×</button></header>
+        <p>暂停原因会写入本轮番茄钟时间线，帮助回顾注意力被什么打断。</p>
+        <textarea autoFocus required value={pauseReason} onChange={(event) => setPauseReason(event.target.value)} placeholder="例如：临时回复重要消息、等待资料下载、注意力涣散…"/>
+        <footer><button type="button" className="cancel" onClick={() => setPauseOpen(false)}>取消</button><button type="submit" disabled={!pauseReason.trim() || worklog.busy}>确认暂停</button></footer>
+      </form>
+    </div>}
   </div>
 }
 
@@ -145,6 +181,19 @@ interface TaskFormProps {
   importance?: Importance
   urgency?: Urgency
   onCreate: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, start: string | null, end: string | null) => void
+}
+
+function TaskEditForm({ task, onSave, onCancel }: { task: DayTask; onSave: (task: DayTask, title: string, start: string | null, end: string | null) => void; onCancel: () => void }) {
+  const [title, setTitle] = useState(task.title)
+  const [timed, setTimed] = useState(Boolean(task.plannedStart && task.plannedEnd))
+  const [start, setStart] = useState(task.plannedStart ?? '09:00')
+  const [end, setEnd] = useState(task.plannedEnd ?? '10:00')
+  return <form className="task-edit-form" onSubmit={(event) => { event.preventDefault(); if (title.trim()) onSave(task, title.trim(), timed ? start : null, timed ? end : null) }} onClick={(event) => event.stopPropagation()}>
+    <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} aria-label={`修改${task.displayCode}内容`}/>
+    <label><input type="checkbox" checked={timed} onChange={(event) => setTimed(event.target.checked)}/>安排时间</label>
+    {timed && <span className="time-range"><input type="time" value={start} onChange={(event) => setStart(event.target.value)}/><b>–</b><input type="time" value={end} onChange={(event) => setEnd(event.target.value)}/></span>}
+    <div><button type="submit">保存</button><button type="button" className="cancel" onClick={onCancel}>取消</button></div>
+  </form>
 }
 
 function TaskForm({ compact, parentId = null, importance: initialImportance = 'important', urgency: initialUrgency = 'urgent', onCreate }: TaskFormProps) {
