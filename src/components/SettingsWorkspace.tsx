@@ -79,6 +79,7 @@ export default function SettingsWorkspace() {
     setError('')
     try {
       setTimer(await invoke<TimerSettings>('save_timer_settings', { settings: timer }))
+      window.dispatchEvent(new Event('worklog:timer-settings-changed'))
       setTimerMessage('番茄钟设置已保存，下一轮专注开始生效。')
     } catch (reason) {
       setError(String(reason))
