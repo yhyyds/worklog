@@ -84,19 +84,14 @@ function App() {
     const action = navigationAction(item)
     window.requestAnimationFrame(() => {
       if (action === 'top') window.scrollTo({ top: 0, behavior: 'smooth' })
-      else if (action === 'focus') document.querySelector<HTMLElement>('.focus-strip')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      else if (action === 'thoughts') {
-        const input = document.querySelector<HTMLTextAreaElement>('.thought-form textarea')
-        input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        input?.focus()
-      } else window.dispatchEvent(new Event(action))
+      else window.dispatchEvent(new Event(action))
     })
   }
 
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">W</span><div><strong>Worklog</strong><small>把一天自然记录下来</small></div></div>
-      <nav>{NAV_ITEMS.map((item, index) => <button type="button" key={item} className={activeNav === item ? 'active' : ''} aria-current={activeNav === item ? 'page' : undefined} onClick={() => navigate(item)}><span>{['☀', '◉', '◇', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
+      <nav>{NAV_ITEMS.map((item, index) => <button type="button" key={item} className={activeNav === item ? 'active' : ''} aria-current={activeNav === item ? 'page' : undefined} onClick={() => navigate(item)}><span>{['☀', '▤', '⬡', '⚙'][index]}</span>{item}</button>)}</nav>
       <div className="sidebar-foot"><span className="status-dot"/>SQLite 本地数据库</div>
     </aside>
 

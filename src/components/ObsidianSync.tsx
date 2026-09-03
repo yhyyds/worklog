@@ -31,58 +31,23 @@ export default function ObsidianSync() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  async function refreshSettings() {
+    if (!isDesktop) return
+    try {
+      setSettings(await invoke<ObsidianSettings>('get_obsidian_settings'))
+    } catch (reason) {
+      setError(String(reason))
+    }
+  }
+
   useEffect(() => {
-    const handleOpen = () => setOpenPanel(true)
+    const handleOpen = () => {
+      setOpenPanel(true)
+      void refreshSettings()
+    }
     window.addEventListener('worklog:open-obsidian', handleOpen)
     return () => window.removeEventListener('worklog:open-obsidian', handleOpen)
   }, [])
-
-  useEffect(() => {
-    if (!isDesktop) return
-    void invoke<ObsidianSettings>('get_obsidian_settings')
-      .then(setSettings)
-      .catch((reason) => setError(String(reason)))
-  }, [])
-
-  async function chooseVault() {
-    setError('')
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false, title: '选择 Obsidian 工作区（日记目录可单独指定）' })
-    if (!selected || Array.isArray(selected)) return
-    setBusy(true)
-    try {
-      const saved = await invoke<ObsidianSettings>('save_obsidian_settings', { vaultPath: selected })
-      setSettings(saved)
-      setPreview(null)
-      setMessage('工作区已保存')
-    } catch (reason) {
-      setError(String(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function chooseDailyRoot() {
-    if (!settings?.vaultPath) {
-      setError('请先选择 Obsidian 工作区')
-      return
-    }
-    setError('')
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false, title: '选择日记根目录（必须位于 Obsidian 工作区内）', defaultPath: settings.vaultPath })
-    if (!selected || Array.isArray(selected)) return
-    setBusy(true)
-    try {
-      const saved = await invoke<ObsidianSettings>('save_daily_root', { dailyPath: selected })
-      setSettings(saved)
-      setPreview(null)
-      setMessage('日记根目录已保存')
-    } catch (reason) {
-      setError(String(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function loadPreview() {
     setBusy(true)
@@ -111,8 +76,12 @@ export default function ObsidianSync() {
     }
   }
 
+  function openSettings() {
+    setOpenPanel(false)
+    window.dispatchEvent(new Event('worklog:open-settings'))
+  }
+
   return <>
-    <button className="obsidian-fab" onClick={() => setOpenPanel(true)} title="Obsidian 同步">⬡</button>
     {openPanel && <div className="obsidian-backdrop" role="presentation" onMouseDown={() => setOpenPanel(false)}>
       <section className="obsidian-panel" role="dialog" aria-modal="true" aria-label="Obsidian 同步" onMouseDown={(event) => event.stopPropagation()}>
         <header>
@@ -123,10 +92,7 @@ export default function ObsidianSync() {
         {!isDesktop ? <div className="obsidian-notice">Obsidian 文件同步仅在 Windows 桌面版可用。浏览器开发模式不会访问本地文件。</div> : <>
           <div className="vault-card">
             <div><span>当前工作区</span><strong>{settings?.vaultPath ?? '尚未选择'}</strong><small>日记根目录：{settings?.dailyRoot || '工作区根目录'} · 输出 YYYY/YYYY-MM/YYYY-MM-DD.md</small></div>
-            <div className="vault-actions">
-              <button disabled={busy} onClick={() => void chooseVault()}>选择工作区</button>
-              <button disabled={busy || !settings?.vaultPath} onClick={() => void chooseDailyRoot()}>选择日记根目录</button>
-            </div>
+            <div className="vault-actions"><button disabled={busy} onClick={openSettings}>在设置中修改</button></div>
           </div>
           <div className="obsidian-actions">
             <button disabled={busy} onClick={() => void loadPreview()}>预览今日 Markdown</button>
