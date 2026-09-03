@@ -6,6 +6,7 @@ export function useWorklog() {
   const gateway = useMemo(createGateway, [])
   const workDate = useMemo(localDate, [])
   const [day, setDay] = useState(() => emptyDay(workDate))
+  const [workMinutes, setWorkMinutes] = useState(25)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,8 +24,17 @@ export function useWorklog() {
     return () => window.removeEventListener('worklog:reload', reload)
   }, [gateway, run, workDate])
 
+  useEffect(() => {
+    const reloadTimer = () => {
+      void gateway.getTimerSettings().then((settings) => setWorkMinutes(settings.workMinutes)).catch(() => undefined)
+    }
+    reloadTimer()
+    window.addEventListener('worklog:timer-settings-changed', reloadTimer)
+    return () => window.removeEventListener('worklog:timer-settings-changed', reloadTimer)
+  }, [gateway])
+
   return {
-    day, workDate, busy, error, clearError: () => setError(null),
+    day, workDate, workMinutes, busy, error, clearError: () => setError(null),
     createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd })),
     updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),
