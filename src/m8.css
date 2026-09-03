@@ -300,3 +300,38 @@
     grid-column: 1 / -1;
   }
 }
+
+.quadrant-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quadrant-actions > span,
+.quadrant-actions > button {
+  display: grid;
+  place-items: center;
+  height: 23px;
+  min-width: 23px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.quadrant-actions > span {
+  background: #ece9df;
+  color: #85847b;
+}
+
+.quadrant-actions > button {
+  border: 1px solid #cbd8d0;
+  background: #fff;
+  color: #4e7562;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.quadrant-actions > button:hover {
+  border-color: #7fa08e;
+  background: #eaf2ed;
+}
