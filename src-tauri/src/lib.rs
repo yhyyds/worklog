@@ -84,6 +84,7 @@ pub fn run() {
             healthcheck,
             commands::get_day_snapshot,
             commands::create_task,
+            commands::update_task,
             commands::set_task_status,
             commands::add_work_entry,
             commands::start_focus,
