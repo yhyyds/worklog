@@ -15,7 +15,7 @@ const formatClock = (iso: string) => new Intl.DateTimeFormat('zh-CN', { hour: '2
 const formatSeconds = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 const ignore = (promise: Promise<unknown>) => { void promise.catch(() => undefined) }
 
-function CompletionMark() {
+export function CompletionMark() {
   return <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
     <path d="M2.1 6.2 4.8 8.7 9.9 3" />
   </svg>
