@@ -76,6 +76,16 @@ pub struct CreateTaskInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateTaskInput {
+    pub work_date: String,
+    pub instance_id: String,
+    pub title: String,
+    pub planned_start: Option<String>,
+    pub planned_end: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetTaskStatusInput {
     pub work_date: String,
     pub instance_id: String,
@@ -104,6 +114,13 @@ pub struct StartFocusInput {
 #[serde(rename_all = "camelCase")]
 pub struct FocusActionInput {
     pub work_date: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseFocusInput {
+    pub work_date: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
