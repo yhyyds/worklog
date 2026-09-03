@@ -45,6 +45,34 @@ pub struct SyncResult {
     pub content_hash: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct FocusRoundReview {
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub task_label: String,
+}
+
+fn load_focus_rounds(connection: &Connection, work_date: &str) -> Result<Vec<FocusRoundReview>, String> {
+    let mut statement = connection.prepare(
+        "SELECT fs.started_at_utc,fs.ended_at_utc,i.display_code,t.title
+         FROM focus_sessions fs
+         JOIN focus_segments segment ON segment.id=(
+           SELECT first_segment.id FROM focus_segments first_segment
+           WHERE first_segment.focus_session_id=fs.id
+           ORDER BY first_segment.started_at_utc,first_segment.id LIMIT 1
+         )
+         JOIN task_day_instances i ON i.id=segment.task_instance_id
+         JOIN tasks t ON t.id=i.task_id
+         WHERE fs.work_date=?1 ORDER BY fs.started_at_utc"
+    ).map_err(|error| error.to_string())?;
+    statement.query_map([work_date], |row| Ok(FocusRoundReview {
+        started_at: row.get(0)?,
+        ended_at: row.get(1)?,
+        task_label: format!("{} {}", row.get::<_, String>(2)?, row.get::<_, String>(3)?),
+    })).map_err(|error| error.to_string())?
+      .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+}
+
 pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0002_obsidian.sql"))
 }
@@ -149,7 +177,27 @@ fn render_task_line(task: &crate::model::DayTask, indent: &str) -> String {
     )
 }
 
-pub fn render_managed(day: &DayState) -> String {
+fn local_clock(value: &str) -> String {
+    DateTime::parse_from_rfc3339(value)
+        .map(|time| time.with_timezone(&Local).format("%H:%M").to_string())
+        .unwrap_or_else(|_| "--:--".to_string())
+}
+
+fn event_in_round(event_time: &str, round: &FocusRoundReview) -> bool {
+    let event = DateTime::parse_from_rfc3339(event_time).ok();
+    let start = DateTime::parse_from_rfc3339(&round.started_at).ok();
+    let end = round.ended_at.as_deref().and_then(|value| DateTime::parse_from_rfc3339(value).ok());
+    match (event, start) {
+        (Some(event), Some(start)) => event >= start && end.is_none_or(|end| event <= end),
+        _ => false,
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> String {
     let quadrants = [
         ("重要 · 紧急", "important", "urgent"),
         ("重要 · 稍缓", "important", "relaxed"),
@@ -196,11 +244,36 @@ pub fn render_managed(day: &DayState) -> String {
     if visible.is_empty() {
         output.push_str("- 今日暂无记录\n");
     } else {
-        for event in visible {
-            let time = DateTime::parse_from_rfc3339(&event.occurred_at)
-                .map(|value| value.with_timezone(&Local).format("%H:%M").to_string())
-                .unwrap_or_else(|_| "--:--".to_string());
-            output.push_str(&format!("- {time}：{}\n", event.title));
+        for (index, round) in focus_rounds.iter().enumerate() {
+            let end = round.ended_at.as_deref().map(local_clock).unwrap_or_else(|| "进行中".to_string());
+            output.push_str(&format!(
+                "<details>\n<summary>第{}轮任务，专注时段：{}–{}，任务：{}，任务记录：</summary>\n\n",
+                index + 1,
+                local_clock(&round.started_at),
+                end,
+                escape_html(&round.task_label)
+            ));
+            let events: Vec<_> = visible.iter().filter(|event| event_in_round(&event.occurred_at, round)).collect();
+            if events.is_empty() {
+                output.push_str("  - 本轮暂无记录\n");
+            } else {
+                for event in events {
+                    output.push_str(&format!("  - {}：{}\n", local_clock(&event.occurred_at), event.title));
+                }
+            }
+            output.push_str("\n</details>\n\n");
+        }
+
+        let outside: Vec<_> = visible.iter().filter(|event| {
+            !focus_rounds.iter().any(|round| event_in_round(&event.occurred_at, round))
+        }).collect();
+        if !outside.is_empty() {
+            if !focus_rounds.is_empty() {
+                output.push_str("### 非专注时段记录\n\n");
+            }
+            for event in outside {
+                output.push_str(&format!("- {}：{}\n", local_clock(&event.occurred_at), event.title));
+            }
         }
     }
     output.push_str(&format!("{END_MARKER}\n"));
@@ -238,10 +311,11 @@ fn preview_core(connection: &Connection, work_date: &str) -> Result<DailyNotePre
     let settings = load_settings(connection)?;
     let relative = daily_relative_path(&settings, work_date)?;
     let day = db::read_day(connection, work_date)?;
+    let focus_rounds = load_focus_rounds(connection, work_date)?;
     Ok(DailyNotePreview {
         work_date: work_date.to_string(),
         relative_path: relative.to_string_lossy().to_string(),
-        markdown: render_managed(&day),
+        markdown: render_managed(&day, &focus_rounds),
         configured: settings.vault_path.is_some(),
     })
 }
@@ -339,7 +413,8 @@ fn sync_core(connection: &Connection, work_date: &str) -> Result<SyncResult, Str
     let relative_text = relative.to_string_lossy().to_string();
     let destination = vault.join(&relative);
     let day = db::read_day(connection, work_date)?;
-    let managed = render_managed(&day);
+    let focus_rounds = load_focus_rounds(connection, work_date)?;
+    let managed = render_managed(&day, &focus_rounds);
     let existing = if destination.exists() {
         fs::read_to_string(&destination).map_err(|error| format!("无法读取现有日记：{error}"))?
     } else {
@@ -464,7 +539,7 @@ mod tests {
 
     #[test]
     fn first_merge_preserves_manual_text() {
-        let merged = merge_managed("# 旧日记\n\n人工内容", &render_managed(&sample_day())).unwrap();
+        let merged = merge_managed("# 旧日记\n\n人工内容", &render_managed(&sample_day(), &[])).unwrap();
         assert!(merged.starts_with("# 旧日记\n\n人工内容"));
         assert!(merged.contains(START_MARKER));
     }
@@ -472,7 +547,7 @@ mod tests {
     #[test]
     fn replacement_preserves_text_around_managed_block() {
         let existing = format!("前文\n{START_MARKER}\n旧内容\n{END_MARKER}\n后文");
-        let merged = merge_managed(&existing, &render_managed(&sample_day())).unwrap();
+        let merged = merge_managed(&existing, &render_managed(&sample_day(), &[])).unwrap();
         assert!(merged.starts_with("前文\n"));
         assert!(merged.ends_with("\n后文"));
         assert!(!merged.contains("旧内容"));
@@ -484,8 +559,23 @@ mod tests {
     }
 
     #[test]
+    fn focus_rounds_are_collapsible_and_keep_their_timeline() {
+        let rounds = vec![FocusRoundReview {
+            started_at: "2026-09-02T02:40:00Z".into(),
+            ended_at: Some("2026-09-02T03:05:00Z".into()),
+            task_label: "#1 整理资料".into(),
+        }];
+        let markdown = render_managed(&sample_day(), &rounds);
+        assert!(markdown.contains("<details>"));
+        assert!(markdown.contains("<summary>第1轮任务，专注时段："));
+        assert!(markdown.contains("任务：#1 整理资料，任务记录："));
+        assert!(markdown.contains("完成#1：整理资料"));
+        assert!(markdown.contains("</details>"));
+    }
+
+    #[test]
     fn renderer_is_quiet_and_structured() {
-        let markdown = render_managed(&sample_day());
+        let markdown = render_managed(&sample_day(), &[]);
         assert!(markdown.contains("## 今日任务"));
         assert!(markdown.contains("- [x] #1 整理资料"));
         assert!(markdown.contains("  - [ ] #1.1 制作 PPT"));
