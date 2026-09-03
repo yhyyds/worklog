@@ -26,7 +26,7 @@ jobs:
           workspaces: src-tauri
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  windows-installer:
+  windows-installers:
     if: github.event_name == 'pull_request'
     needs: [frontend, rust]
     runs-on: windows-latest
@@ -40,10 +40,23 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm install
-      - run: npm run bundle:windows
+      - name: Build Windows installers
+        run: npm run bundle:windows
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem "artifacts/*.exe" |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } |
+            Set-Content -Encoding ascii SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: worklog-windows-installer
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: worklog-windows-installers
+          path: |
+            artifacts/*.exe
+            SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

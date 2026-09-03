@@ -193,10 +193,6 @@ fn event_in_round(event_time: &str, round: &FocusRoundReview) -> bool {
     }
 }
 
-fn escape_html(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
 pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> String {
     let quadrants = [
         ("重要 · 紧急", "important", "urgent"),
@@ -247,21 +243,21 @@ pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> Stri
         for (index, round) in focus_rounds.iter().enumerate() {
             let end = round.ended_at.as_deref().map(local_clock).unwrap_or_else(|| "进行中".to_string());
             output.push_str(&format!(
-                "<details>\n<summary>第{}轮任务，专注时段：{}–{}，任务：{}，任务记录：</summary>\n\n",
+                "- 第{}轮任务，专注时段：{}–{}，任务：{}，任务记录：\n",
                 index + 1,
                 local_clock(&round.started_at),
                 end,
-                escape_html(&round.task_label)
+                round.task_label
             ));
             let events: Vec<_> = visible.iter().filter(|event| event_in_round(&event.occurred_at, round)).collect();
             if events.is_empty() {
-                output.push_str("  - 本轮暂无记录\n");
+                output.push_str("\t- 本轮暂无记录\n");
             } else {
                 for event in events {
-                    output.push_str(&format!("  - {}：{}\n", local_clock(&event.occurred_at), event.title));
+                    output.push_str(&format!("\t- {}：{}\n", local_clock(&event.occurred_at), event.title));
                 }
             }
-            output.push_str("\n</details>\n\n");
+            output.push('\n');
         }
 
         let outside: Vec<_> = visible.iter().filter(|event| {
@@ -559,18 +555,24 @@ mod tests {
     }
 
     #[test]
-    fn focus_rounds_are_collapsible_and_keep_their_timeline() {
+    fn focus_rounds_use_obsidian_native_folding_and_keep_their_timeline() {
         let rounds = vec![FocusRoundReview {
             started_at: "2026-09-02T02:40:00Z".into(),
             ended_at: Some("2026-09-02T03:05:00Z".into()),
             task_label: "#1 整理资料".into(),
         }];
         let markdown = render_managed(&sample_day(), &rounds);
-        assert!(markdown.contains("<details>"));
-        assert!(markdown.contains("<summary>第1轮任务，专注时段："));
-        assert!(markdown.contains("任务：#1 整理资料，任务记录："));
-        assert!(markdown.contains("完成#1：整理资料"));
-        assert!(markdown.contains("</details>"));
+        let local_time = DateTime::parse_from_rfc3339("2026-09-02T10:43:00+08:00")
+            .unwrap()
+            .with_timezone(&Local)
+            .format("%H:%M")
+            .to_string();
+        assert!(markdown.contains("- 第1轮任务，专注时段："));
+        assert!(markdown.contains("任务：#1 整理资料，任务记录：\n\t- "));
+        assert!(markdown.contains(&format!("\t- {local_time}：完成#1：整理资料")));
+        assert!(!markdown.contains("<details>"));
+        assert!(!markdown.contains("<summary>"));
+        assert!(!markdown.contains("\n\n\t- "));
     }
 
     #[test]

@@ -9,7 +9,7 @@
 - Tauri 2 + Rust Windows 桌面层，SQLite 保存全部结构化数据。
 - 四象限任务、两级子任务、每日编号和永久 ID。
 - 绑定一级任务的完整番茄钟与休息生命周期，支持后台计时、系统通知和托盘运行；暂停必须记录原因，任务切换写入时间线。
-- Obsidian 日记按番茄钟轮次生成可收起的专注时段与事务时间轴。
+- Obsidian 日记按番茄钟轮次生成纯 Markdown 嵌套列表；时间轴紧贴轮次父项并缩进一层，可由 Obsidian 原生折叠。
 - 独立设置界面集中管理番茄钟、本地 SQLite 数据目录、Obsidian 工作区和日记根目录。
 - 本地数据库支持迁移并即时切换，新位置生效时保留原数据库作为安全备份。
 - 可选择本地 Obsidian Vault，安全预览、编辑并同步 Markdown。
@@ -17,13 +17,18 @@
 - 工作记录按回顾等级投影，隐藏草稿与机械事件，严格控制噪音。
 - 日终收尾只顺延未完成任务，次日重新编号且永久 ID 不变。
 - Windows NSIS 当前用户安装包，无需管理员权限。
-- 安装包内置 WebView2 离线运行时，可在无网络环境完成依赖安装。
+- 同时提供轻量安装包（不内置 WebView2，缺失时联网下载）和离线安装包（内置 WebView2）。
 - 中文/英文安装界面、正式应用图标和 SHA-256 下载校验文件。
 - Git 标签自动构建并发布 GitHub Release；PR 会实际构建安装包作为冒烟验证。
 
 ## 下载与安装
 
-从仓库的 [Releases](https://github.com/yhyyds/worklog/releases) 下载最新的 `*-setup.exe` 和 `SHA256SUMS.txt`，校验后双击安装。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
+从仓库的 [Releases](https://github.com/yhyyds/worklog/releases) 下载最新安装包和 `SHA256SUMS.txt`：
+
+- `*-no-webview2-setup.exe`：体积小，不内置 WebView2；电脑尚未安装运行时时，安装过程需要联网下载。
+- `*-with-webview2-setup.exe`：内置 WebView2 离线安装程序，适合无网络环境。
+
+两种安装包的功能和数据格式相同。校验后双击安装；当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”。详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
 
 ## 本地开发
 
@@ -42,11 +47,13 @@ npm run check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-构建 Windows 安装包：
+构建两种 Windows 安装包：
 
 ```bash
 npm run bundle:windows
 ```
+
+产物写入 `artifacts/`。也可以分别执行 `npm run bundle:windows:no-webview` 或 `npm run bundle:windows:with-webview`。
 
 ## 数据原则
 
