@@ -15,6 +15,12 @@ const formatClock = (iso: string) => new Intl.DateTimeFormat('zh-CN', { hour: '2
 const formatSeconds = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 const ignore = (promise: Promise<unknown>) => { void promise.catch(() => undefined) }
 
+export function CompletionMark() {
+  return <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+    <path d="M2.1 6.2 4.8 8.7 9.9 3" />
+  </svg>
+}
+
 async function notify(title: string, body: string) {
   if ('__TAURI_INTERNALS__' in window) {
     const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification')
@@ -139,7 +145,7 @@ function App() {
               <div className="task-list">{tasks.length === 0 && <p className="empty">暂时没有事项</p>}{tasks.map((task) => {
                 const children = incompleteFirst(day.tasks.filter((child) => child.parentId === task.id))
                 return <div key={task.id} className={`task-card ${task.status === 'completed' ? 'done' : ''} ${selectedTask?.id === task.id ? 'selected' : ''}`} onClick={() => setSelectedTaskId(task.id)}>
-                  <button className="check" onClick={(event) => { event.stopPropagation(); toggleTask(task) }}>{task.status === 'completed' ? '✓' : ''}</button>
+                  <button type="button" className="check" aria-label={`${task.status === 'completed' ? '标记为未完成' : '标记为已完成'}：${task.title}`} aria-pressed={task.status === 'completed'} onClick={(event) => { event.stopPropagation(); toggleTask(task) }}>{task.status === 'completed' && <CompletionMark />}</button>
                   <div className="task-body">
                     {editingTaskId === task.id ? <TaskEditForm task={task} onSave={updateTask} onCancel={() => setEditingTaskId(null)}/> : <>
                       <div className="task-title-row"><strong><span>{task.displayCode}</span> {task.title}</strong><button type="button" className="edit-task" onClick={(event) => { event.stopPropagation(); setEditingTaskId(task.id) }}>编辑</button></div>
@@ -148,7 +154,7 @@ function App() {
                     {children.map((child) => editingTaskId === child.id
                       ? <TaskEditForm key={child.id} task={child} onSave={updateTask} onCancel={() => setEditingTaskId(null)}/>
                       : <div className="child" key={child.id}>
-                        <button className="mini-check" onClick={(event) => { event.stopPropagation(); toggleTask(child) }}>{child.status === 'completed' ? '✓' : ''}</button>
+                        <button type="button" className="mini-check" aria-label={`${child.status === 'completed' ? '标记为未完成' : '标记为已完成'}：${child.title}`} aria-pressed={child.status === 'completed'} onClick={(event) => { event.stopPropagation(); toggleTask(child) }}>{child.status === 'completed' && <CompletionMark />}</button>
                         <span className={child.status === 'completed' ? 'strike' : ''}>{child.displayCode} {child.title}{child.plannedStart ? ` · ${child.plannedStart}–${child.plannedEnd}` : ''}</span>
                         <button type="button" className="edit-task child-edit" onClick={(event) => { event.stopPropagation(); setEditingTaskId(child.id) }}>编辑</button>
                       </div>)}
