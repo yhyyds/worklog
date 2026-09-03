@@ -2,12 +2,14 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M8 集中设置
+## 当前里程碑：M9 使用细节优化
 
-- React + TypeScript + Vite 界面；左侧入口收敛为“我的一天 / 随笔 / Obsidian / 设置”。
+- React + TypeScript + Vite 界面；“我的一天”始终作为主页面，随笔、Obsidian 与设置使用弹窗。
+- 父子任务均可修改内容与当天时间段；四象限支持独立滚动、快捷新增和完成项置底。
 - Tauri 2 + Rust Windows 桌面层，SQLite 保存全部结构化数据。
 - 四象限任务、两级子任务、每日编号和永久 ID。
-- 绑定任务的完整番茄钟与休息生命周期，支持后台计时、系统通知和托盘运行。
+- 绑定一级任务的完整番茄钟与休息生命周期，支持后台计时、系统通知和托盘运行；暂停必须记录原因，任务切换写入时间线。
+- Obsidian 日记按番茄钟轮次生成可收起的专注时段与事务时间轴。
 - 独立设置界面集中管理番茄钟、本地 SQLite 数据目录、Obsidian 工作区和日记根目录。
 - 本地数据库支持迁移并即时切换，新位置生效时保留原数据库作为安全备份。
 - 可选择本地 Obsidian Vault，安全预览、编辑并同步 Markdown。
@@ -54,4 +56,4 @@ npm run bundle:windows
 - 自动生成内容只写入受管理区块，保留人工补充。
 - 安装、升级与卸载流程不得主动删除用户数据库或 Obsidian 文件。
 
-详细设计见 [架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md)、[M4 日终收尾](docs/M4_DAY_CLOSING.md)、[M5 笔记工作区](docs/M5_NOTES_WORKSPACE.md)、[M6 番茄钟生命周期](docs/M6_FOCUS_LIFECYCLE.md)和 [M7 Windows 发行](docs/M7_WINDOWS_RELEASE.md)。
+详细设计见 [M9 使用细节](docs/M9_USAGE_REFINEMENTS.md)、[架构基线](docs/ARCHITECTURE.md)、[产品基线](docs/PRODUCT_BASELINE.md)、[M3 Obsidian 同步](docs/M3_OBSIDIAN_SYNC.md)、[M4 日终收尾](docs/M4_DAY_CLOSING.md)、[M5 笔记工作区](docs/M5_NOTES_WORKSPACE.md)、[M6 番茄钟生命周期](docs/M6_FOCUS_LIFECYCLE.md)和 [M7 Windows 发行](docs/M7_WINDOWS_RELEASE.md)。

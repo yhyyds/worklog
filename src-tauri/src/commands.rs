@@ -63,6 +63,48 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
     db::read_day(connection, &input.work_date)
 }
 
+pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInput) -> Result<DayState, String> {
+    let title = input.title.trim();
+    if title.is_empty() { return Err("任务内容不能为空".into()); }
+    let start = db::minute_value(&input.planned_start)?;
+    let end = db::minute_value(&input.planned_end)?;
+    if start.is_some() != end.is_some() || start.zip(end).is_some_and(|(a, b)| a >= b) {
+        return Err("任务时间段无效".into());
+    }
+
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let (task_id, display_code, previous_title): (String, String, String) = transaction.query_row(
+        "SELECT t.id,i.display_code,t.title FROM task_day_instances i
+         JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2",
+        params![input.instance_id, input.work_date],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).map_err(|_| "任务不存在或不在今天".to_string())?;
+    let now = db::now_iso();
+    transaction.execute(
+        "UPDATE tasks SET title=?1,updated_at_utc=?2,row_version=row_version+1 WHERE id=?3",
+        params![title, now, task_id],
+    ).map_err(|error| error.to_string())?;
+    transaction.execute(
+        "UPDATE task_day_instances SET planned_start_minute=?1,planned_end_minute=?2,updated_at_utc=?3 WHERE id=?4",
+        params![start, end, now, input.instance_id],
+    ).map_err(|error| error.to_string())?;
+    let schedule = match (&input.planned_start, &input.planned_end) {
+        (Some(start), Some(end)) => format!("安排时间：{start}–{end}"),
+        _ => "未安排固定时间".to_string(),
+    };
+    let detail = if previous_title == title {
+        schedule
+    } else {
+        format!("原内容：{previous_title}；{schedule}")
+    };
+    db::append_event(
+        &transaction, "task.updated", "task", &task_id, &input.work_date, "detail",
+        &format!("更新任务{display_code}：{title}"), Some(&detail), &db::new_id(),
+    )?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    db::read_day(connection, &input.work_date)
+}
+
 pub(crate) fn set_task_status_core(connection: &mut Connection, input: SetTaskStatusInput) -> Result<DayState, String> {
     validate_choice(&input.status, &["not_started", "in_progress", "waiting", "blocked", "completed", "deferred", "cancelled"], "任务状态")?;
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
@@ -106,6 +148,11 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     if active > 0 { return Err("已有正在进行的专注".into()); }
     let active_rest: i64 = transaction.query_row("SELECT COUNT(*) FROM rest_sessions WHERE active_guard=1", [], |row| row.get(0)).map_err(|error| error.to_string())?;
     if active_rest > 0 { return Err("请先完成或跳过当前休息".into()); }
+    let parent_instance_id: Option<String> = transaction.query_row(
+        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2",
+        params![input.task_id, input.work_date], |row| row.get(0),
+    ).map_err(|_| "任务不存在或不在今天".to_string())?;
+    if parent_instance_id.is_some() { return Err("专注事项只能选择一级任务".into()); }
     let (task_id, display_code, title) = task_info(&transaction, &input.task_id)?;
     let session_id = db::new_id();
     let segment_id = db::new_id();
@@ -123,7 +170,9 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     db::read_day(connection, &input.work_date)
 }
 
-pub(crate) fn pause_focus_core(connection: &mut Connection, input: FocusActionInput) -> Result<DayState, String> {
+pub(crate) fn pause_focus_core(connection: &mut Connection, input: PauseFocusInput) -> Result<DayState, String> {
+    let reason = input.reason.trim();
+    if reason.is_empty() { return Err("请填写暂停原因".into()); }
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
     let (session_id, status, stored, target): (String, String, i64, Option<String>) = transaction.query_row(
         "SELECT id,status,remaining_seconds,target_end_at_utc FROM focus_sessions WHERE active_guard=1 AND work_date=?1", [&input.work_date],
@@ -132,7 +181,10 @@ pub(crate) fn pause_focus_core(connection: &mut Connection, input: FocusActionIn
     if status != "running" { return Err("当前专注不是运行状态".into()); }
     let remaining = db::remaining_from_target(&status, stored, &target);
     transaction.execute("UPDATE focus_sessions SET status='paused',remaining_seconds=?1,target_end_at_utc=NULL WHERE id=?2", params![remaining, session_id]).map_err(|error| error.to_string())?;
-    db::append_event(&transaction, "focus.paused", "focus", &session_id, &input.work_date, "detail", "暂停本轮工作", Some(&format!("剩余{}分钟", (remaining + 59) / 60)), &db::new_id())?;
+    db::append_event(
+        &transaction, "focus.paused", "focus", &session_id, &input.work_date, "detail",
+        &format!("暂停本轮工作：{reason}"), Some(&format!("剩余{}分钟", (remaining + 59) / 60)), &db::new_id(),
+    )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
 }
@@ -158,13 +210,18 @@ pub(crate) fn switch_focus_core(connection: &mut Connection, input: SwitchFocusI
         |row| Ok((row.get(0)?, row.get(1)?)),
     ).map_err(|_| "当前没有进行中的专注".to_string())?;
     if old_instance == input.task_id { return db::read_day(&transaction, &input.work_date); }
-    let (_, old_code, _) = task_info(&transaction, &old_instance)?;
-    let (_, new_code, _) = task_info(&transaction, &input.task_id)?;
+    let (_, old_code, old_title) = task_info(&transaction, &old_instance)?;
+    let new_parent: Option<String> = transaction.query_row(
+        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2",
+        params![input.task_id, input.work_date], |row| row.get(0),
+    ).map_err(|_| "任务不存在或不在今天".to_string())?;
+    if new_parent.is_some() { return Err("专注事项只能选择一级任务".into()); }
+    let (_, new_code, new_title) = task_info(&transaction, &input.task_id)?;
     let now = db::now_iso();
     transaction.execute("UPDATE focus_segments SET ended_at_utc=?1 WHERE focus_session_id=?2 AND ended_at_utc IS NULL", params![now, session_id]).map_err(|error| error.to_string())?;
     transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![db::new_id(), session_id, input.task_id, now]).map_err(|error| error.to_string())?;
     transaction.execute("UPDATE focus_sessions SET primary_task_instance_id=?1 WHERE id=?2", params![input.task_id, session_id]).map_err(|error| error.to_string())?;
-    db::append_event(&transaction, "focus.task_switched", "focus", &session_id, &input.work_date, "summary", &format!("本轮工作由{old_code}切换至{new_code}"), None, &db::new_id())?;
+    db::append_event(&transaction, "focus.task_switched", "focus", &session_id, &input.work_date, "summary", &format!("本轮工作由{old_code} {old_title}切换至{new_code} {new_title}"), None, &db::new_id())?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
 }
@@ -202,13 +259,15 @@ pub fn get_day_snapshot(database: State<'_, Database>, work_date: String) -> Res
 #[tauri::command]
 pub fn create_task(database: State<'_, Database>, input: CreateTaskInput) -> Result<DayState, String> { with_database(database, |connection| create_task_core(connection, input)) }
 #[tauri::command]
+pub fn update_task(database: State<'_, Database>, input: UpdateTaskInput) -> Result<DayState, String> { with_database(database, |connection| update_task_core(connection, input)) }
+#[tauri::command]
 pub fn set_task_status(database: State<'_, Database>, input: SetTaskStatusInput) -> Result<DayState, String> { with_database(database, |connection| set_task_status_core(connection, input)) }
 #[tauri::command]
 pub fn add_work_entry(database: State<'_, Database>, input: WorkEntryInput) -> Result<DayState, String> { with_database(database, |connection| add_work_entry_core(connection, input)) }
 #[tauri::command]
 pub fn start_focus(database: State<'_, Database>, input: StartFocusInput) -> Result<DayState, String> { with_database(database, |connection| start_focus_core(connection, input)) }
 #[tauri::command]
-pub fn pause_focus(database: State<'_, Database>, input: FocusActionInput) -> Result<DayState, String> { with_database(database, |connection| pause_focus_core(connection, input)) }
+pub fn pause_focus(database: State<'_, Database>, input: PauseFocusInput) -> Result<DayState, String> { with_database(database, |connection| pause_focus_core(connection, input)) }
 #[tauri::command]
 pub fn resume_focus(database: State<'_, Database>, input: FocusActionInput) -> Result<DayState, String> { with_database(database, |connection| resume_focus_core(connection, input)) }
 #[tauri::command]
@@ -269,6 +328,60 @@ mod tests {
         create_task_core(&mut connection, task_input("整理资料", None)).unwrap();
         assert!(connection.execute("UPDATE events SET event_type='changed'", []).is_err());
         assert!(connection.execute("DELETE FROM events", []).is_err());
+    }
+
+    #[test]
+    fn tasks_can_be_edited_after_creation() {
+        let mut connection = connection();
+        let task = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].clone();
+        let day = update_task_core(&mut connection, UpdateTaskInput {
+            work_date: "2026-09-02".into(),
+            instance_id: task.id,
+            title: "进一步整理资料".into(),
+            planned_start: Some("10:00".into()),
+            planned_end: Some("11:00".into()),
+        }).unwrap();
+        assert_eq!(day.tasks[0].title, "进一步整理资料");
+        assert_eq!(day.tasks[0].planned_start.as_deref(), Some("10:00"));
+        assert_eq!(day.timeline.last().unwrap().event_type, "task.updated");
+    }
+
+    #[test]
+    fn focus_requires_top_level_task_and_pause_reason() {
+        let mut connection = connection();
+        let parent = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].id.clone();
+        let child = create_task_core(&mut connection, task_input("做PPT", Some(parent.clone()))).unwrap().tasks[1].id.clone();
+        assert!(start_focus_core(&mut connection, StartFocusInput {
+            work_date: "2026-09-02".into(), task_id: child, planned_seconds: 1500,
+        }).unwrap_err().contains("一级任务"));
+        start_focus_core(&mut connection, StartFocusInput {
+            work_date: "2026-09-02".into(), task_id: parent, planned_seconds: 1500,
+        }).unwrap();
+        assert!(pause_focus_core(&mut connection, PauseFocusInput {
+            work_date: "2026-09-02".into(), reason: "   ".into(),
+        }).unwrap_err().contains("暂停原因"));
+        let day = pause_focus_core(&mut connection, PauseFocusInput {
+            work_date: "2026-09-02".into(), reason: "临时回复消息".into(),
+        }).unwrap();
+        assert!(day.timeline.last().unwrap().title.contains("临时回复消息"));
+    }
+
+    #[test]
+    fn switching_focus_writes_a_visible_detailed_event() {
+        let mut connection = connection();
+        let first = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].id.clone();
+        let second = create_task_core(&mut connection, task_input("制作汇报", None)).unwrap().tasks[1].id.clone();
+        start_focus_core(&mut connection, StartFocusInput {
+            work_date: "2026-09-02".into(), task_id: first, planned_seconds: 1500,
+        }).unwrap();
+        let day = switch_focus_core(&mut connection, SwitchFocusInput {
+            work_date: "2026-09-02".into(), task_id: second,
+        }).unwrap();
+        let event = day.timeline.last().unwrap();
+        assert_eq!(event.event_type, "focus.task_switched");
+        assert_eq!(event.visibility, "summary");
+        assert!(event.title.contains("#1 整理资料"));
+        assert!(event.title.contains("#2 制作汇报"));
     }
 
     #[test]
