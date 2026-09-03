@@ -65,12 +65,12 @@ fn load_focus_rounds(connection: &Connection, work_date: &str) -> Result<Vec<Foc
          JOIN tasks t ON t.id=i.task_id
          WHERE fs.work_date=?1 ORDER BY fs.started_at_utc"
     ).map_err(|error| error.to_string())?;
-    statement.query_map([work_date], |row| Ok(FocusRoundReview {
+    let rows = statement.query_map([work_date], |row| Ok(FocusRoundReview {
         started_at: row.get(0)?,
         ended_at: row.get(1)?,
         task_label: format!("{} {}", row.get::<_, String>(2)?, row.get::<_, String>(3)?),
-    })).map_err(|error| error.to_string())?
-      .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    })).map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
 }
 
 pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
@@ -188,7 +188,7 @@ fn event_in_round(event_time: &str, round: &FocusRoundReview) -> bool {
     let start = DateTime::parse_from_rfc3339(&round.started_at).ok();
     let end = round.ended_at.as_deref().and_then(|value| DateTime::parse_from_rfc3339(value).ok());
     match (event, start) {
-        (Some(event), Some(start)) => event >= start && end.is_none_or(|end| event <= end),
+        (Some(event), Some(start)) => event >= start && end.map_or(true, |end| event <= end),
         _ => false,
     }
 }
