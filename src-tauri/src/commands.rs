@@ -367,6 +367,24 @@ mod tests {
     }
 
     #[test]
+    fn switching_focus_writes_a_visible_detailed_event() {
+        let mut connection = connection();
+        let first = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].id.clone();
+        let second = create_task_core(&mut connection, task_input("制作汇报", None)).unwrap().tasks[1].id.clone();
+        start_focus_core(&mut connection, StartFocusInput {
+            work_date: "2026-09-02".into(), task_id: first, planned_seconds: 1500,
+        }).unwrap();
+        let day = switch_focus_core(&mut connection, SwitchFocusInput {
+            work_date: "2026-09-02".into(), task_id: second,
+        }).unwrap();
+        let event = day.timeline.last().unwrap();
+        assert_eq!(event.event_type, "focus.task_switched");
+        assert_eq!(event.visibility, "summary");
+        assert!(event.title.contains("#1 整理资料"));
+        assert!(event.title.contains("#2 制作汇报"));
+    }
+
+    #[test]
     fn only_one_focus_session_can_be_active() {
         let mut connection = connection();
         let task_id = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].id.clone();
