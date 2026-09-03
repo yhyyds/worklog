@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextDisplayCode, remainingSeconds, type DayTask, type FocusSession } from './model'
+import { incompleteFirst, nextDisplayCode, remainingSeconds, type DayTask, type FocusSession } from './model'
 
 const task = (id: string, displayCode: string, parentId: string | null = null): DayTask => ({
   id, permanentTaskId: `task-${id}`, parentId, displayCode, title: displayCode,
@@ -23,5 +23,14 @@ describe('计时恢复', () => {
   it('依据目标结束时间计算，而不是依赖递减计数', () => {
     const focus: FocusSession = { id: 'f', taskId: 'a', status: 'running', plannedSeconds: 1500, remainingSeconds: 1500, targetEndAt: '2026-09-02T10:25:00.000Z', startedAt: '2026-09-02T10:00:00.000Z' }
     expect(remainingSeconds(focus, Date.parse('2026-09-02T10:10:00.000Z'))).toBe(900)
+  })
+})
+
+describe('任务视觉排序', () => {
+  it('将已完成事项稳定移动到当前栏目的底部', () => {
+    const completed = { ...task('done', '#1'), status: 'completed' as const }
+    const pending = task('pending', '#2')
+    const active = { ...task('active', '#3'), status: 'in_progress' as const }
+    expect(incompleteFirst([completed, pending, active]).map((item) => item.id)).toEqual(['pending', 'active', 'done'])
   })
 })
