@@ -4,6 +4,7 @@ mod db;
 mod model;
 mod notes;
 mod obsidian;
+mod storage;
 mod timer;
 
 use rusqlite::Connection;
@@ -38,8 +39,11 @@ pub fn run() {
         .setup(|app| {
             let app_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&app_dir)?;
-            let connection = db::open_database(&app_dir.join("worklog.db"))?;
+            let data_dir = storage::resolve_data_directory(&app_dir);
+            fs::create_dir_all(&data_dir)?;
+            let connection = db::open_database(&data_dir.join("worklog.db"))?;
             app.manage(Database(Mutex::new(connection)));
+            app.manage(storage::StorageRuntime::new(app_dir, data_dir));
 
             let open_item = MenuItem::with_id(app, "open", "打开 Worklog", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -89,6 +93,8 @@ pub fn run() {
             commands::complete_focus,
             timer::get_timer_settings,
             timer::save_timer_settings,
+            storage::get_storage_settings,
+            storage::migrate_storage_directory,
             timer::pause_rest,
             timer::resume_rest,
             timer::complete_rest,
