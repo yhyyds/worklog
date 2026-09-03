@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { TimerSettings } from '../application/gateway'
+import { loadFontScale, saveFontScale } from '../application/appearance'
 
 interface ObsidianSettings {
   vaultPath: string | null
@@ -30,6 +31,7 @@ const defaultTimer: TimerSettings = {
 
 export default function SettingsWorkspace() {
   const [openPanel, setOpenPanel] = useState(false)
+  const [fontScale, setFontScale] = useState(loadFontScale)
   const [timer, setTimer] = useState<TimerSettings>(defaultTimer)
   const [obsidian, setObsidian] = useState<ObsidianSettings | null>(null)
   const [storage, setStorage] = useState<StorageSettings | null>(null)
@@ -40,6 +42,7 @@ export default function SettingsWorkspace() {
   const [error, setError] = useState('')
 
   async function loadSettings() {
+    setFontScale(loadFontScale())
     if (!desktop) return
     setLoading(true)
     setError('')
@@ -160,7 +163,7 @@ export default function SettingsWorkspace() {
   return <div className="settings-backdrop" onMouseDown={() => setOpenPanel(false)}>
     <section className="settings-workspace" role="dialog" aria-modal="true" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
       <header className="settings-header">
-        <div><small>WORKLOG PREFERENCES</small><h2>设置</h2><p>集中管理专注节奏与本地文件位置</p></div>
+        <div><small>WORKLOG PREFERENCES</small><h2>设置</h2><p>集中管理界面、专注节奏与本地文件位置</p></div>
         <button type="button" onClick={() => setOpenPanel(false)} aria-label="关闭设置">×</button>
       </header>
 
@@ -169,7 +172,18 @@ export default function SettingsWorkspace() {
 
       <div className="settings-content">
         <section className="settings-section">
-          <div className="settings-section-title"><span>01</span><div><h3>番茄钟</h3><p>控制每一轮工作的节奏；正在进行的计时不会被中途改变。</p></div></div>
+          <div className="settings-section-title"><span>01</span><div><h3>界面字号</h3><p>调整整个应用的阅读尺寸，修改后立即生效并保存在本机。</p></div></div>
+          <div className="font-scale-control">
+            <span>小</span>
+            <input type="range" min="85" max="130" step="5" value={fontScale} onChange={(event) => setFontScale(saveFontScale(Number(event.target.value)))}/>
+            <span>大</span>
+            <strong>{fontScale}%</strong>
+            <button type="button" onClick={() => setFontScale(saveFontScale(100))}>恢复标准</button>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-title"><span>02</span><div><h3>番茄钟</h3><p>控制每一轮工作的节奏；正在进行的计时不会被中途改变。</p></div></div>
           <div className="settings-number-grid">
             <label><span>单轮专注</span><div><input type="number" min="1" max="180" value={timer.workMinutes} onChange={(event) => setTimer({ ...timer, workMinutes: Number(event.target.value) })}/><small>分钟</small></div></label>
             <label><span>短休息</span><div><input type="number" min="1" max="60" value={timer.shortBreakMinutes} onChange={(event) => setTimer({ ...timer, shortBreakMinutes: Number(event.target.value) })}/><small>分钟</small></div></label>
@@ -181,7 +195,7 @@ export default function SettingsWorkspace() {
         </section>
 
         <section className="settings-section">
-          <div className="settings-section-title"><span>02</span><div><h3>本地数据</h3><p>任务、时间线与专注记录保存在 SQLite 数据库中。</p></div></div>
+          <div className="settings-section-title"><span>03</span><div><h3>本地数据</h3><p>任务、时间线与专注记录保存在 SQLite 数据库中。</p></div></div>
           <div className="settings-path-card">
             <div><span>当前数据目录</span><strong>{storage?.currentDirectory ?? (loading ? '正在读取…' : '未读取')}</strong><small>数据库：{storage?.databasePath ?? 'worklog.db'}</small></div>
             <button type="button" disabled={!desktop || loading} onClick={() => void chooseStorage()}>更改并迁移</button>
@@ -190,7 +204,7 @@ export default function SettingsWorkspace() {
         </section>
 
         <section className="settings-section">
-          <div className="settings-section-title"><span>03</span><div><h3>Obsidian 与日记</h3><p>工作区负责浏览 Markdown；日记可输出到工作区内任意指定文件夹。</p></div></div>
+          <div className="settings-section-title"><span>04</span><div><h3>Obsidian 与日记</h3><p>工作区负责浏览 Markdown；日记可输出到工作区内任意指定文件夹。</p></div></div>
           <div className="settings-path-card">
             <div><span>Obsidian 工作区</span><strong>{obsidian?.vaultPath ?? '尚未选择'}</strong><small>用于随笔、浏览与日记同步</small></div>
             <button type="button" disabled={!desktop || loading} onClick={() => void chooseVault()}>选择工作区</button>
