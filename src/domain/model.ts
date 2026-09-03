@@ -77,6 +77,10 @@ export function nextDisplayCode(tasks: DayTask[], parentId: string | null): stri
   return `${prefix}${largest + 1}`
 }
 
+export function incompleteFirst<T extends Pick<DayTask, 'status'>>(tasks: T[]): T[] {
+  return [...tasks].sort((left, right) => Number(left.status === 'completed') - Number(right.status === 'completed'))
+}
+
 export function remainingSeconds(focus: Pick<FocusSession, 'status' | 'remainingSeconds' | 'targetEndAt'>, now = Date.now()): number {
   if (focus.status === 'paused' || !focus.targetEndAt) return focus.remainingSeconds
   return Math.max(0, Math.ceil((new Date(focus.targetEndAt).getTime() - now) / 1000))
