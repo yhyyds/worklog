@@ -31,6 +31,7 @@ function App() {
   const { day } = worklog
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [childFor, setChildFor] = useState<string | null>(null)
+  const [quickCreateQuadrant, setQuickCreateQuadrant] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [pauseOpen, setPauseOpen] = useState(false)
   const [pauseReason, setPauseReason] = useState('')
@@ -47,7 +48,7 @@ function App() {
 
   const activeTask = useMemo(() => day.tasks.find((task) => task.id === day.focus?.taskId) ?? null, [day])
   const selectedTask = day.tasks.find((task) => !task.parentId && task.id === selectedTaskId) ?? day.tasks.find((task) => !task.parentId && task.status !== 'completed') ?? null
-  const left = day.rest ? remainingSeconds(day.rest, tick) : day.focus ? remainingSeconds(day.focus, tick) : 1500
+  const left = day.rest ? remainingSeconds(day.rest, tick) : day.focus ? remainingSeconds(day.focus, tick) : worklog.workMinutes * 60
 
   useEffect(() => {
     if ('__TAURI_INTERNALS__' in window) { completing.current = false; return }
@@ -62,6 +63,7 @@ function App() {
   function createTask(title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) {
     ignore(worklog.createTask(title, importance, urgency, parentId, plannedStart, plannedEnd))
     setChildFor(null)
+    setQuickCreateQuadrant(null)
   }
 
   function updateTask(task: DayTask, title: string, plannedStart: string | null, plannedEnd: string | null) {
@@ -132,7 +134,8 @@ function App() {
           <div className="quadrants">{quadrants.map((quadrant) => {
             const tasks = incompleteFirst(day.tasks.filter((task) => !task.parentId && task.importance === quadrant.importance && task.urgency === quadrant.urgency))
             return <article className="quadrant" key={quadrant.key}>
-              <header><div><h3>{quadrant.title}</h3><small>{quadrant.note}</small></div><span>{tasks.length}</span></header>
+              <header><div><h3>{quadrant.title}</h3><small>{quadrant.note}</small></div><div className="quadrant-actions"><span>{tasks.length}</span><button type="button" title={`在${quadrant.title}中新建任务`} aria-label={`在${quadrant.title}中新建任务`} onClick={() => setQuickCreateQuadrant(quickCreateQuadrant === quadrant.key ? null : quadrant.key)}>＋</button></div></header>
+              {quickCreateQuadrant === quadrant.key && <TaskForm importance={quadrant.importance} urgency={quadrant.urgency} onCreate={createTask}/>}
               <div className="task-list">{tasks.length === 0 && <p className="empty">暂时没有事项</p>}{tasks.map((task) => {
                 const children = incompleteFirst(day.tasks.filter((child) => child.parentId === task.id))
                 return <div key={task.id} className={`task-card ${task.status === 'completed' ? 'done' : ''} ${selectedTask?.id === task.id ? 'selected' : ''}`} onClick={() => setSelectedTaskId(task.id)}>
