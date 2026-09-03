@@ -1,5 +1,5 @@
 import { id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
-import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
@@ -32,6 +32,20 @@ export class BrowserGateway implements WorklogGateway {
     return commit({ ...day, tasks: [...day.tasks, task], timeline: [...day.timeline, timelineEvent('task.created', `新增任务${displayCode}：${input.title}`)] })
   }
 
+  async updateTask(input: UpdateTaskRequest) {
+    const day = loadDay(input.workDate)
+    const task = findTask(day, input.instanceId)
+    const title = input.title.trim()
+    if (!title) throw new Error('任务内容不能为空')
+    if ((input.plannedStart === null) !== (input.plannedEnd === null)) throw new Error('任务时间段无效')
+    const updated = { ...task, title, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd }
+    return commit({
+      ...day,
+      tasks: day.tasks.map((item) => item.permanentTaskId === task.permanentTaskId ? { ...item, title } : item.id === input.instanceId ? updated : item).map((item) => item.id === input.instanceId ? updated : item),
+      timeline: [...day.timeline, timelineEvent('task.updated', `更新任务${task.displayCode}：${title}`, 'detail', input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间')],
+    })
+  }
+
   async setTaskStatus(workDate: string, instanceId: string, status: TaskStatus) {
     const day = loadDay(workDate)
     const task = findTask(day, instanceId)
@@ -52,15 +66,18 @@ export class BrowserGateway implements WorklogGateway {
     if (day.focus) throw new Error('已有正在进行的专注')
     if (day.rest) throw new Error('请先完成或跳过当前休息')
     const task = findTask(day, taskId)
+    if (task.parentId) throw new Error('专注事项只能选择一级任务')
     const now = Date.now()
     return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: new Date(now + plannedSeconds * 1000).toISOString(), startedAt: new Date(now).toISOString() }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${task.displayCode} ${task.title}`)] })
   }
 
-  async pauseFocus(workDate: string) {
+  async pauseFocus(workDate: string, reason: string) {
+    const pauseReason = reason.trim()
+    if (!pauseReason) throw new Error('请填写暂停原因')
     const day = loadDay(workDate)
     if (!day.focus || day.focus.status !== 'running') throw new Error('当前没有可暂停的专注')
     const remaining = remainingSeconds(day.focus)
-    return commit({ ...day, focus: { ...day.focus, status: 'paused', remainingSeconds: remaining, targetEndAt: null }, timeline: [...day.timeline, timelineEvent('focus.paused', '暂停本轮工作', 'detail', `剩余${Math.ceil(remaining / 60)}分钟`)] })
+    return commit({ ...day, focus: { ...day.focus, status: 'paused', remainingSeconds: remaining, targetEndAt: null }, timeline: [...day.timeline, timelineEvent('focus.paused', `暂停本轮工作：${pauseReason}`, 'detail', `剩余${Math.ceil(remaining / 60)}分钟`)] })
   }
 
   async resumeFocus(workDate: string) {
@@ -74,7 +91,8 @@ export class BrowserGateway implements WorklogGateway {
     if (!day.focus) throw new Error('当前没有进行中的专注')
     const oldTask = findTask(day, day.focus.taskId)
     const task = findTask(day, taskId)
-    return commit({ ...day, focus: { ...day.focus, taskId }, timeline: [...day.timeline, timelineEvent('focus.task_switched', `本轮工作由${oldTask.displayCode}切换至${task.displayCode}`)] })
+    if (task.parentId) throw new Error('专注事项只能选择一级任务')
+    return commit({ ...day, focus: { ...day.focus, taskId }, timeline: [...day.timeline, timelineEvent('focus.task_switched', `本轮工作由${oldTask.displayCode} ${oldTask.title}切换至${task.displayCode} ${task.title}`)] })
   }
 
   async completeFocus(workDate: string, reason: 'elapsed' | 'early_complete' | 'abandoned') {
