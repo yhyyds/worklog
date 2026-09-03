@@ -34,6 +34,8 @@ Worklog 是 Windows 本地优先桌面应用。核心数据由应用管理，Obs
 - Work Entry：进度/想法/决定/阻塞/结果及三级回顾等级。
 - Essay：Markdown 随笔和 Obsidian 链接。
 - Sync：受管理区块、原子写入、备份与冲突。
+- Settings：集中管理番茄钟、本地数据库目录、Obsidian 工作区和日记根目录。
+- Storage：通过固定位置指针发现 SQLite 数据目录，迁移采用一致性快照并在成功后即时切换连接。
 
 ## 关键决策
 
@@ -45,4 +47,4 @@ Worklog 是 Windows 本地优先桌面应用。核心数据由应用管理，Obs
 
 ## 当前实现状态
 
-M1 已建立前端领域模型、四象限交互、低噪时间线、基础计时器、SQLite 迁移和 Tauri 健康检查。完整 SQLite 用例、Obsidian 同步与系统托盘将在后续里程碑实现。
+M8 已完成四象限任务、低噪事件时间线、完整番茄钟与休息生命周期、日终顺延、Obsidian 安全同步、Markdown 随笔工作区、Windows 托盘与集中设置。本地 SQLite 数据目录可安全迁移并即时切换；旧数据库会保留作为恢复备份。
