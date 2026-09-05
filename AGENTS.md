@@ -5,6 +5,7 @@
 - 本地迁移与后续迭代必须从 Worklog `0.9.1` 开始。
 - 精确基线提交：`7d2fdfc203ff55358abfd7b9dfdebb5140a27fb3`。
 - 交接分支：`codex/0.9.1-local-handoff`。
+- 本机功能分支 `codex/0.9.1-native-folding-dual-installers` 从上述交接分支创建，并独立实现 `0.9.2`，不得改从远端 `0.9.2` 获取代码。
 - `main` 已包含更晚的 `0.9.2`。除非用户明确批准，不得把 `main`、`b420c0c` 或 M9.2 提交合并、变基或 cherry-pick 到本分支。
 - 修改前先检查 `git status --short`、当前分支、`git rev-parse HEAD`，并确认 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 的版本一致。
 
@@ -28,12 +29,12 @@
 - 必须拒绝目录穿越、Vault 外路径、符号链接越界和隐藏备份目录误枚举。
 - 改动持久化结构时必须提供向前兼容迁移和回归测试。
 
-## 0.9.1 当前行为与待办边界
+## 0.9.1 基线与本机 0.9.2 行为
 
 - `0.9.1` 的番茄钟日记仍使用 `<details>` / `<summary>` 折叠区块，这是当前基线事实。
-- 下一轮已确认需求：移除上述 HTML；父级时间段记录后立即跟随子事件，子事件缩进一个制表位，中间不能有空白行，让 Obsidian 使用原生列表折叠。
-- 下一轮已确认需求：输出两份 Windows NSIS 安装包，一份不内置 WebView2，一份内置离线 WebView2。
-- 实现上述需求时必须基于 `0.9.1` 重做，不得直接引入现有 `0.9.2` 提交。
+- 本机 `0.9.2` 分支移除上述 HTML；父级时间段记录后立即跟随子事件，子事件缩进一个制表位，中间没有空白行，让 Obsidian 使用原生列表折叠。
+- 本机 `0.9.2` 分支输出两份 Windows NSIS 安装包，一份不内置 WebView2，一份内置离线 WebView2。
+- 上述实现严格基于 `0.9.1` 重做，不得直接引入远端现有 `0.9.2` 提交。
 
 ## 开发流程
 
@@ -43,8 +44,8 @@
 4. 每项行为变化必须同步测试与文档。
 5. 提交前运行：
    - `npm run check`
-   - `cargo test --manifest-path src-tauri/Cargo.toml`
-6. 依赖锁文件生成并提交后，改用 `npm ci` 与 `cargo test --locked --manifest-path src-tauri/Cargo.toml`。
+   - `cargo test --locked --manifest-path src-tauri/Cargo.toml`
+6. 前端安装统一使用 `npm ci`，Cargo 验证统一使用 `--locked`。
 7. Windows 发行变更必须真实构建目标安装包并核对文件名与 SHA-256。
 8. 使用独立分支和 PR；CI 全绿后再合并。
 

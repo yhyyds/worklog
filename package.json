@@ -1,7 +1,7 @@
 {
   "name": "worklog",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.9.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,7 @@
     "test": "vitest run",
     "check:version": "node scripts/check-version.mjs",
     "check": "npm run check:version && npm run test && npm run build",
-    "bundle:windows": "tauri build --bundles nsis",
+    "bundle:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installers.ps1",
     "tauri": "tauri"
   },
   "dependencies": {

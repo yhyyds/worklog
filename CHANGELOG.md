@@ -2,6 +2,17 @@
 
 Worklog 遵循语义化版本。当前仍处于 1.0 前，次版本号代表一个可验证的产品里程碑。
 
+## [0.9.2] - 2026-09-05
+
+### Added
+
+- 提供统一脚本，一次构建 `no-webview2` 与 `with-webview2` 两份 Windows NSIS 安装包并生成 `SHA256SUMS.txt`。
+- CI 与 Release 使用锁定依赖，真实构建、校验并上传两份安装包。
+
+### Changed
+
+- Obsidian 每轮专注改用父级 Markdown 列表和制表位缩进的子事件，依靠原生嵌套列表折叠，不再输出 `<details>` 或 `<summary>`。
+
 ## [0.9.1] - 2026-09-03
 
 ### Fixed

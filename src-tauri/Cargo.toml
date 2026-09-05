@@ -1,6 +1,6 @@
 [package]
 name = "worklog"
-version = "0.9.1"
+version = "0.9.2"
 description = "Local-first work journal, planner and focus timer"
 authors = ["Worklog contributors"]
 license = "MIT"
@@ -12,7 +12,7 @@ name = "worklog_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2" }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = "0.4"

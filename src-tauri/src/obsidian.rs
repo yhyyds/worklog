@@ -49,26 +49,17 @@ pub struct SyncResult {
 pub struct FocusRoundReview {
     pub started_at: String,
     pub ended_at: Option<String>,
-    pub task_label: String,
 }
 
 fn load_focus_rounds(connection: &Connection, work_date: &str) -> Result<Vec<FocusRoundReview>, String> {
     let mut statement = connection.prepare(
-        "SELECT fs.started_at_utc,fs.ended_at_utc,i.display_code,t.title
-         FROM focus_sessions fs
-         JOIN focus_segments segment ON segment.id=(
-           SELECT first_segment.id FROM focus_segments first_segment
-           WHERE first_segment.focus_session_id=fs.id
-           ORDER BY first_segment.started_at_utc,first_segment.id LIMIT 1
-         )
-         JOIN task_day_instances i ON i.id=segment.task_instance_id
-         JOIN tasks t ON t.id=i.task_id
-         WHERE fs.work_date=?1 ORDER BY fs.started_at_utc"
+        "SELECT started_at_utc,ended_at_utc
+         FROM focus_sessions
+         WHERE work_date=?1 ORDER BY started_at_utc"
     ).map_err(|error| error.to_string())?;
     let rows = statement.query_map([work_date], |row| Ok(FocusRoundReview {
         started_at: row.get(0)?,
         ended_at: row.get(1)?,
-        task_label: format!("{} {}", row.get::<_, String>(2)?, row.get::<_, String>(3)?),
     })).map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
 }
@@ -193,10 +184,6 @@ fn event_in_round(event_time: &str, round: &FocusRoundReview) -> bool {
     }
 }
 
-fn escape_html(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
 pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> String {
     let quadrants = [
         ("重要 · 紧急", "important", "urgent"),
@@ -241,27 +228,25 @@ pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> Stri
 
     output.push_str("\n## 今日记录\n\n");
     let visible: Vec<_> = day.timeline.iter().filter(|event| event.visibility != "hidden").collect();
-    if visible.is_empty() {
+    if visible.is_empty() && focus_rounds.is_empty() {
         output.push_str("- 今日暂无记录\n");
     } else {
         for (index, round) in focus_rounds.iter().enumerate() {
             let end = round.ended_at.as_deref().map(local_clock).unwrap_or_else(|| "进行中".to_string());
             output.push_str(&format!(
-                "<details>\n<summary>第{}轮任务，专注时段：{}–{}，任务：{}，任务记录：</summary>\n\n",
+                "- 第{}轮任务，专注时段：{}-{}，任务记录：\n",
                 index + 1,
                 local_clock(&round.started_at),
-                end,
-                escape_html(&round.task_label)
+                end
             ));
             let events: Vec<_> = visible.iter().filter(|event| event_in_round(&event.occurred_at, round)).collect();
             if events.is_empty() {
-                output.push_str("  - 本轮暂无记录\n");
+                output.push_str("\t- 本轮暂无记录\n");
             } else {
                 for event in events {
-                    output.push_str(&format!("  - {}：{}\n", local_clock(&event.occurred_at), event.title));
+                    output.push_str(&format!("\t- {}：{}\n", local_clock(&event.occurred_at), event.title));
                 }
             }
-            output.push_str("\n</details>\n\n");
         }
 
         let outside: Vec<_> = visible.iter().filter(|event| {
@@ -269,7 +254,7 @@ pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> Stri
         }).collect();
         if !outside.is_empty() {
             if !focus_rounds.is_empty() {
-                output.push_str("### 非专注时段记录\n\n");
+                output.push_str("\n### 非专注时段记录\n\n");
             }
             for event in outside {
                 output.push_str(&format!("- {}：{}\n", local_clock(&event.occurred_at), event.title));
@@ -522,6 +507,34 @@ mod tests {
         }
     }
 
+    fn event(id: &str, occurred_at: &str, title: &str) -> TimelineEvent {
+        TimelineEvent {
+            id: id.into(), event_type: "focus.review".into(), occurred_at: occurred_at.into(),
+            title: title.into(), detail: None, visibility: "summary".into(),
+        }
+    }
+
+    fn day_with_timeline(timeline: Vec<TimelineEvent>) -> DayState {
+        let mut day = sample_day();
+        day.timeline = timeline;
+        day
+    }
+
+    fn round(started_at: &str, ended_at: &str) -> FocusRoundReview {
+        FocusRoundReview { started_at: started_at.into(), ended_at: Some(ended_at.into()) }
+    }
+
+    fn records_section(markdown: &str) -> &str {
+        markdown.split_once("## 今日记录\n\n").expect("daily record heading").1
+            .split_once(END_MARKER).expect("managed end marker").0
+    }
+
+    fn assert_native_markdown(markdown: &str) {
+        assert!(!markdown.contains("<details>"));
+        assert!(!markdown.contains("<summary>"));
+        assert!(!markdown.contains("</details>"));
+    }
+
     #[test]
     fn daily_path_matches_obsidian_layout() {
         assert_eq!(
@@ -559,18 +572,107 @@ mod tests {
     }
 
     #[test]
-    fn focus_rounds_are_collapsible_and_keep_their_timeline() {
-        let rounds = vec![FocusRoundReview {
-            started_at: "2026-09-02T02:40:00Z".into(),
-            ended_at: Some("2026-09-02T03:05:00Z".into()),
-            task_label: "#1 整理资料".into(),
-        }];
-        let markdown = render_managed(&sample_day(), &rounds);
-        assert!(markdown.contains("<details>"));
-        assert!(markdown.contains("<summary>第1轮任务，专注时段："));
-        assert!(markdown.contains("任务：#1 整理资料，任务记录："));
-        assert!(markdown.contains("完成#1：整理资料"));
-        assert!(markdown.contains("</details>"));
+    fn single_focus_round_is_a_native_nested_list() {
+        let started_at = "2026-09-02T02:40:00Z";
+        let event_at = "2026-09-02T02:43:00Z";
+        let ended_at = "2026-09-02T03:05:00Z";
+        let day = day_with_timeline(vec![event("event-1", event_at, "完成#1：整理资料")]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：完成#1：整理资料\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(event_at)
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn multiple_focus_rounds_remain_adjacent_and_ordered() {
+        let first_start = "2026-09-02T02:00:00Z";
+        let first_event = "2026-09-02T02:05:00Z";
+        let first_end = "2026-09-02T02:25:00Z";
+        let second_start = "2026-09-02T03:00:00Z";
+        let second_event = "2026-09-02T03:05:00Z";
+        let second_end = "2026-09-02T03:25:00Z";
+        let day = day_with_timeline(vec![
+            event("event-1", first_event, "第一轮记录"),
+            event("event-2", second_event, "第二轮记录"),
+        ]);
+        let markdown = render_managed(&day, &[
+            round(first_start, first_end), round(second_start, second_end),
+        ]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：第一轮记录\n- 第2轮任务，专注时段：{}-{}，任务记录：\n\t- {}：第二轮记录\n",
+            local_clock(first_start), local_clock(first_end), local_clock(first_event),
+            local_clock(second_start), local_clock(second_end), local_clock(second_event)
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn pause_reason_is_preserved_as_an_indented_event() {
+        let started_at = "2026-09-02T04:00:00Z";
+        let paused_at = "2026-09-02T04:08:00Z";
+        let ended_at = "2026-09-02T04:25:00Z";
+        let title = "暂停本轮工作：临时回复重要消息";
+        let day = day_with_timeline(vec![event("pause", paused_at, title)]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：{}\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(paused_at), title
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn focus_task_switch_is_preserved_as_an_indented_event() {
+        let started_at = "2026-09-02T05:00:00Z";
+        let switched_at = "2026-09-02T05:18:00Z";
+        let ended_at = "2026-09-02T05:25:00Z";
+        let title = "本轮工作由#2 整理资料切换至#3 制作汇报";
+        let day = day_with_timeline(vec![event("switch", switched_at, title)]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：{}\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(switched_at), title
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn focus_round_without_visible_events_has_an_indented_placeholder() {
+        let started_at = "2026-09-02T06:00:00Z";
+        let ended_at = "2026-09-02T06:25:00Z";
+        let markdown = render_managed(&day_with_timeline(vec![]), &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- 本轮暂无记录\n",
+            local_clock(started_at), local_clock(ended_at)
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn events_outside_focus_rounds_keep_the_non_focus_section() {
+        let started_at = "2026-09-02T07:00:00Z";
+        let inside_at = "2026-09-02T07:05:00Z";
+        let ended_at = "2026-09-02T07:25:00Z";
+        let outside_at = "2026-09-02T08:00:00Z";
+        let day = day_with_timeline(vec![
+            event("inside", inside_at, "专注内记录"),
+            event("outside", outside_at, "非专注记录"),
+        ]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：专注内记录\n\n### 非专注时段记录\n\n- {}：非专注记录\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(inside_at),
+            local_clock(outside_at)
+        );
+        assert_eq!(records_section(&markdown), expected);
+        assert_native_markdown(&markdown);
     }
 
     #[test]

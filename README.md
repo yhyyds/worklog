@@ -2,35 +2,39 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：M9 使用细节优化
+## 当前里程碑：M9.2 原生折叠与双 Windows 安装包
 
 - React + TypeScript + Vite 界面；“我的一天”始终作为主页面，随笔、Obsidian 与设置使用弹窗。
 - 父子任务均可修改内容与当天时间段；四象限支持独立滚动、快捷新增和完成项置底。
 - Tauri 2 + Rust Windows 桌面层，SQLite 保存全部结构化数据。
 - 四象限任务、两级子任务、每日编号和永久 ID。
 - 绑定一级任务的完整番茄钟与休息生命周期，支持后台计时、系统通知和托盘运行；暂停必须记录原因，任务切换写入时间线。
-- Obsidian 日记按番茄钟轮次生成可收起的专注时段与事务时间轴。
+- Obsidian 日记把每轮专注写成父级 Markdown 列表，时间轴事件使用制表位缩进，直接依靠 Obsidian 原生嵌套列表折叠。
 - 独立设置界面集中管理番茄钟、本地 SQLite 数据目录、Obsidian 工作区和日记根目录。
 - 本地数据库支持迁移并即时切换，新位置生效时保留原数据库作为安全备份。
 - 可选择本地 Obsidian Vault，安全预览、编辑并同步 Markdown。
 - 日记根目录由用户在 Obsidian 工作区内指定，输出 `YYYY/YYYY-MM/YYYY-MM-DD.md`，只替换受管理区块。
 - 工作记录按回顾等级投影，隐藏草稿与机械事件，严格控制噪音。
 - 日终收尾只顺延未完成任务，次日重新编号且永久 ID 不变。
-- Windows NSIS 当前用户安装包，无需管理员权限。
-- 安装包内置 WebView2 离线运行时，可在无网络环境完成依赖安装。
+- Windows NSIS 当前用户安装包，无需管理员权限；同时提供不内置 WebView2 的小体积版和内置 WebView2 离线运行时的完整离线版。
 - 中文/英文安装界面、正式应用图标和 SHA-256 下载校验文件。
 - Git 标签自动构建并发布 GitHub Release；PR 会实际构建安装包作为冒烟验证。
 
 ## 下载与安装
 
-从仓库的 [Releases](https://github.com/yhyyds/worklog/releases) 下载最新的 `*-setup.exe` 和 `SHA256SUMS.txt`，校验后双击安装。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
+从仓库的 [Releases](https://github.com/yhyyds/worklog/releases) 下载对应安装包和 `SHA256SUMS.txt`：
+
+- `*-no-webview2-setup.exe`：体积较小，适合已安装 WebView2 Runtime 的 Windows 10/11 电脑；安装包不会下载或安装 WebView2。
+- `*-with-webview2-setup.exe`：内置 WebView2 离线运行时，体积较大，适合离线电脑或无法确定运行时是否存在的环境。
+
+校验后双击安装。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
 
 ## 本地开发
 
 前置条件：Node.js 24、Rust stable，以及 Tauri 2 的 Windows 系统依赖。
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -42,11 +46,13 @@ npm run check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-构建 Windows 安装包：
+一次构建两份 Windows 安装包并生成 SHA-256 清单：
 
 ```bash
 npm run bundle:windows
 ```
+
+产物保存在 `artifacts/windows/`，文件名明确包含 `no-webview2` 或 `with-webview2`。
 
 ## 数据原则
 

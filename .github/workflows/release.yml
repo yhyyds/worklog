@@ -20,13 +20,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Verify release version
         run: npm run check:version -- "${{ github.ref_name }}"
@@ -35,38 +36,28 @@ jobs:
         run: npm run check
 
       - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
-      - name: Build and publish Windows installer
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Worklog ${{ github.ref_name }}'
-          releaseBody: |
-            Windows x64 正式安装包。
+      - name: Build both Windows installers
+        run: npm run bundle:windows
 
-            - 当前用户安装，无需管理员权限
-            - 已内置 WebView2 离线安装程序
-            - 所有业务数据保存在本地
-            - 请使用 SHA256SUMS.txt 校验下载文件
-
-            当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
-          releaseDraft: false
-          prerelease: false
-          args: --bundles nsis
-
-      - name: Generate SHA-256 checksum
-        shell: pwsh
-        run: |
-          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
-          if (-not $installer) { throw "NSIS installer not found" }
-          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content -Encoding ascii SHA256SUMS.txt
-
-      - name: Upload checksum
+      - name: Create GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" SHA256SUMS.txt --clobber
+        run: |
+          $notes = @'
+          Windows x64 当前用户安装包，无需管理员权限。
+
+          - `no-webview2`：体积较小，不安装 WebView2；目标电脑必须已经具备 WebView2 Runtime。
+          - `with-webview2`：内置 WebView2 离线安装程序，体积较大，可在无网络环境安装。
+          - 所有业务数据保存在本地。
+          - 请使用 `SHA256SUMS.txt` 校验下载文件。
+
+          当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
+          '@
+          $notesPath = Join-Path $env:RUNNER_TEMP "worklog-release-notes.md"
+          $notes | Set-Content -LiteralPath $notesPath -Encoding utf8
+          $assets = @(Get-ChildItem -LiteralPath "artifacts/windows" -File | Select-Object -ExpandProperty FullName)
+          if ($assets.Count -ne 3) { throw "Expected two installers and one checksum file" }
+          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
