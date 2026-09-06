@@ -25,6 +25,10 @@ pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0003_day_closing.sql"))?;
     connection.execute_batch(include_str!("../migrations/0004_essay_notes.sql"))?;
     connection.execute_batch(include_str!("../migrations/0005_focus_lifecycle.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0006_focus_modes.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0007_growth_system.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0008_task_inbox.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0009_planning_privacy.sql"))?;
     Ok(())
 }
 
@@ -52,6 +56,14 @@ pub fn remaining_from_target(status: &str, stored: i64, target: &Option<String>)
         .unwrap_or(stored)
 }
 
+pub fn elapsed_from_start(started_at: &Option<String>) -> i64 {
+    started_at
+        .as_ref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|start| (Utc::now().timestamp() - start.timestamp()).max(0))
+        .unwrap_or(0)
+}
+
 pub fn append_event(
     transaction: &Transaction<'_>, event_type: &str, aggregate_type: &str,
     aggregate_id: &str, work_date: &str, visibility: &str, title: &str,
@@ -67,7 +79,7 @@ pub fn append_event(
 
 pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, String> {
     let mut task_statement = connection.prepare(
-        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.work_date=?1 ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
+        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.work_date=?1 AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id) ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
     ).map_err(|error| error.to_string())?;
     let tasks = task_statement.query_map([work_date], |row| Ok(DayTask {
         id: row.get(0)?, permanent_task_id: row.get(1)?, parent_id: row.get(2)?,
@@ -94,12 +106,25 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
       .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
 
     let focus = connection.query_row(
-        "SELECT id,primary_task_instance_id,status,planned_seconds,remaining_seconds,target_end_at_utc,started_at_utc FROM focus_sessions WHERE active_guard=1 AND work_date=?1 LIMIT 1",
+        "SELECT f.id,f.primary_task_instance_id,f.status,f.planned_seconds,f.remaining_seconds,
+                f.target_end_at_utc,f.started_at_utc,COALESCE(m.timer_mode,'countdown'),
+                COALESCE(m.accumulated_seconds,0),m.running_started_at_utc
+         FROM focus_sessions f LEFT JOIN focus_session_modes m ON m.focus_session_id=f.id
+         WHERE f.active_guard=1 AND f.work_date=?1 LIMIT 1",
         [work_date], |row| {
             let status: String = row.get(2)?;
             let stored: i64 = row.get(4)?;
             let target: Option<String> = row.get(5)?;
-            Ok(FocusSession { id: row.get(0)?, task_id: row.get(1)?, status: status.clone(), planned_seconds: row.get(3)?, remaining_seconds: remaining_from_target(&status, stored, &target), target_end_at: target, started_at: row.get(6)? })
+            let timer_mode: String = row.get(7)?;
+            let accumulated: i64 = row.get(8)?;
+            let running_started: Option<String> = row.get(9)?;
+            let elapsed_seconds = accumulated;
+            Ok(FocusSession {
+                id: row.get(0)?, task_id: row.get(1)?, status: status.clone(),
+                planned_seconds: row.get(3)?, remaining_seconds: remaining_from_target(&status, stored, &target),
+                target_end_at: target, started_at: row.get(6)?, timer_mode, elapsed_seconds,
+                running_started_at: running_started,
+            })
         }
     ).optional().map_err(|error| error.to_string())?;
 
@@ -120,4 +145,31 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
     ).optional().map_err(|error| error.to_string())?;
 
     Ok(DayState { work_date: work_date.to_string(), tasks, timeline, focus, rest })
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    #[test]
+    fn version_one_migrations_preserve_existing_rows() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(include_str!("../migrations/0001_initial.sql")).unwrap();
+        connection.execute_batch(include_str!("../migrations/0002_obsidian.sql")).unwrap();
+        connection.execute_batch(include_str!("../migrations/0003_day_closing.sql")).unwrap();
+        connection.execute_batch(include_str!("../migrations/0004_essay_notes.sql")).unwrap();
+        connection.execute_batch(include_str!("../migrations/0005_focus_lifecycle.sql")).unwrap();
+        connection.execute(
+            "INSERT INTO app_settings(key,value_json,updated_at_utc) VALUES('sentinel','{\"kept\":true}',?1)",
+            [now_iso()],
+        ).unwrap();
+        initialize(&connection).unwrap();
+        let value: String = connection.query_row("SELECT value_json FROM app_settings WHERE key='sentinel'", [], |row| row.get(0)).unwrap();
+        assert_eq!(value, "{\"kept\":true}");
+        let new_tables: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('focus_session_modes','habits','long_term_goals','quote_usage')",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(new_tables, 4);
+    }
 }

@@ -15,7 +15,11 @@ pub struct TimerSettings {
     pub long_break_minutes: i64,
     pub long_break_interval: i64,
     pub auto_start_break: bool,
+    #[serde(default = "default_timer_mode")]
+    pub timer_mode: String,
 }
+
+fn default_timer_mode() -> String { "countdown".to_string() }
 
 impl Default for TimerSettings {
     fn default() -> Self {
@@ -25,6 +29,7 @@ impl Default for TimerSettings {
             long_break_minutes: 15,
             long_break_interval: 4,
             auto_start_break: true,
+            timer_mode: default_timer_mode(),
         }
     }
 }
@@ -50,7 +55,7 @@ fn load_settings_from(connection: &Connection) -> Result<TimerSettings, String> 
         .map(|settings| settings.unwrap_or_default())
 }
 
-fn load_settings_tx(transaction: &Transaction<'_>) -> Result<TimerSettings, String> {
+pub(crate) fn load_settings_tx(transaction: &Transaction<'_>) -> Result<TimerSettings, String> {
     let value: Option<String> = transaction.query_row(
         "SELECT value_json FROM app_settings WHERE key=?1",
         [SETTINGS_KEY],
@@ -70,6 +75,9 @@ fn validate_settings(settings: &TimerSettings) -> Result<(), String> {
     }
     if !(1..=12).contains(&settings.long_break_interval) {
         return Err("长休息间隔必须在 1–12 轮之间".to_string());
+    }
+    if !["countdown", "countUp"].contains(&settings.timer_mode.as_str()) {
+        return Err("计时模式无效".to_string());
     }
     Ok(())
 }
@@ -356,5 +364,34 @@ mod tests {
         assert_eq!(resumed.rest.as_ref().unwrap().status, "running");
         let skipped = finish_rest_core(&mut connection, "2026-09-02", true).unwrap();
         assert!(skipped.rest.is_none());
+    }
+
+    #[test]
+    fn count_up_focus_has_no_deadline_and_persists_elapsed_time() {
+        let mut connection = connection();
+        let settings = TimerSettings { timer_mode: "countUp".into(), auto_start_break: false, ..TimerSettings::default() };
+        connection.execute(
+            "INSERT INTO app_settings(key,value_json,updated_at_utc) VALUES('focus_timer',?1,?2)",
+            params![serde_json::to_string(&settings).unwrap(), db::now_iso()],
+        ).unwrap();
+        let task_id = task(&mut connection);
+        let started = commands::start_focus_core(&mut connection, StartFocusInput {
+            work_date: "2026-09-02".into(), task_id, planned_seconds: 1500,
+        }).unwrap();
+        let focus = started.focus.unwrap();
+        assert_eq!(focus.timer_mode, "count_up");
+        assert!(focus.target_end_at.is_none());
+        let earlier = (Utc::now() - Duration::seconds(90)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        connection.execute(
+            "UPDATE focus_session_modes SET running_started_at_utc=?1 WHERE focus_session_id=?2",
+            params![earlier, focus.id],
+        ).unwrap();
+        commands::complete_focus_core(&mut connection, CompleteFocusInput {
+            work_date: "2026-09-02".into(), reason: "early_complete".into(),
+        }).unwrap();
+        let allocated: i64 = connection.query_row(
+            "SELECT allocated_seconds FROM focus_segments WHERE focus_session_id=?1", [focus.id], |row| row.get(0),
+        ).unwrap();
+        assert!((89..=92).contains(&allocated));
     }
 }

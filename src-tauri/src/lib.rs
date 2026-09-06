@@ -1,16 +1,26 @@
 mod closing;
 mod commands;
 mod db;
+#[cfg(debug_assertions)]
+mod demo;
+mod growth;
+mod categories;
+mod planning;
+mod sharing;
+mod inbox;
 mod model;
 mod notes;
 mod obsidian;
+mod reports;
+mod report_details;
 mod storage;
 mod timer;
+mod windowing;
 
 use rusqlite::Connection;
 use serde::Serialize;
 use std::{fs, sync::Mutex};
-use tauri::{menu::{Menu, MenuItem}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}, Manager, State};
+use tauri::{menu::{Menu, MenuItem}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}, Manager, State, WindowEvent};
 
 pub(crate) struct Database(pub(crate) Mutex<Connection>);
 
@@ -37,13 +47,22 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let app_dir = app.path().app_data_dir()?;
+            #[cfg(debug_assertions)]
+            let demo_dir = if std::env::args().any(|arg|arg=="--demo") { Some(demo::prepare()?) } else { None };
+            #[cfg(not(debug_assertions))]
+            let demo_dir: Option<std::path::PathBuf> = None;
+            let app_dir = match demo_dir.as_ref() { Some(path) => path.clone(), None => app.path().app_data_dir()? };
             fs::create_dir_all(&app_dir)?;
             let data_dir = storage::resolve_data_directory(&app_dir);
             fs::create_dir_all(&data_dir)?;
             let connection = db::open_database(&data_dir.join("worklog.db"))?;
             app.manage(Database(Mutex::new(connection)));
             app.manage(storage::StorageRuntime::new(app_dir, data_dir));
+            if let Some(path) = demo_dir {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_title(&format!("Worklog 1.0 · 隔离演示 · {}",path.display()))?;
+                }
+            }
 
             let open_item = MenuItem::with_id(app, "open", "打开 Worklog", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -80,8 +99,44 @@ pub fn run() {
             timer::start_background(app.handle().clone());
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let action = if let Some(database) = window.app_handle().try_state::<Database>() {
+                    match database.0.lock() {
+                        Ok(connection) => windowing::load_settings(&connection)
+                            .map(|settings| settings.close_action)
+                            .unwrap_or(windowing::CloseAction::HideToTray),
+                        Err(_) => windowing::CloseAction::HideToTray,
+                    }
+                } else {
+                    windowing::CloseAction::HideToTray
+                };
+                match action {
+                    windowing::CloseAction::Quit => window.app_handle().exit(0),
+                    windowing::CloseAction::HideToTray => {
+                        let _ = window.hide();
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             healthcheck,
+            categories::get_growth_catalog,
+            categories::save_growth_category,
+            categories::assign_growth_category,
+            planning::save_goal_action_plan,
+            planning::delete_goal_action,
+            sharing::get_report_overview,
+            sharing::get_share_preference,
+            sharing::save_share_preference,
+            inbox::list_inbox,
+            inbox::create_inbox_task,
+            inbox::move_task_to_inbox,
+            inbox::schedule_inbox_task,
             commands::get_day_snapshot,
             commands::create_task,
             commands::update_task,
@@ -92,8 +147,23 @@ pub fn run() {
             commands::resume_focus,
             commands::switch_focus,
             commands::complete_focus,
+            growth::list_habits,
+            growth::create_habit,
+            growth::archive_habit,
+            growth::get_habit_review,
+            growth::complete_habit_review,
+            growth::list_long_term_goals,
+            growth::create_long_term_goal,
+            growth::create_goal_phase,
+            growth::save_goal_phase_note,
+            growth::create_goal_action,
+            growth::set_goal_action_progress,
+            reports::get_weekly_report,
+            reports::save_weekly_report_image,
             timer::get_timer_settings,
             timer::save_timer_settings,
+            windowing::get_window_behavior,
+            windowing::save_window_behavior,
             storage::get_storage_settings,
             storage::migrate_storage_directory,
             timer::pause_rest,
@@ -107,6 +177,7 @@ pub fn run() {
             obsidian::save_daily_root,
             obsidian::preview_daily_note,
             obsidian::sync_daily_note,
+            obsidian::get_daily_note_sync_status,
             notes::list_vault_notes,
             notes::read_vault_note,
             notes::save_vault_note,

@@ -1,0 +1,14 @@
+.inbox-workspace { max-width: 880px; }
+.inbox-content { padding: 24px 32px 36px; display: grid; gap: 24px; }
+.inbox-content label { color: #506759; font-size: 14px; }
+.inbox-content form > div,.inbox-capture > div { display: flex; gap: 12px; margin-top: 8px; }
+.inbox-content input,.inbox-content select { min-width: 0; flex: 1; border: 1px solid #dce6df; border-radius: 10px; padding: 12px; background: white; }
+.inbox-content button { border: 0; border-radius: 10px; padding: 10px 16px; background: #e6f0e8; color: #31553e; cursor: pointer; }
+.inbox-content button:disabled { opacity: .45; cursor: default; }
+.inbox-capture small { display: block; color: #819087; margin-top: 8px; }
+.inbox-date { display: flex; align-items: center; gap: 12px; }
+.inbox-date input { flex: initial; }
+.inbox-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #f5f8f4; border: 1px solid #e5ece6; border-radius: 16px; padding: 20px; }
+.inbox-item h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.inbox-item p { color: #76837b; font-size: 13px; }
+.inbox-item button { flex-shrink: 0; }

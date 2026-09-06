@@ -35,8 +35,11 @@
 - 本机 `0.9.2` 分支移除上述 HTML；父级时间段记录后立即跟随子事件，子事件缩进一个制表位，中间没有空白行，让 Obsidian 使用原生列表折叠。
 - 本机 `0.9.2` 分支输出两份 Windows NSIS 安装包，一份不内置 WebView2，一份内置离线 WebView2。
 - 上述实现严格基于 `0.9.1` 重做，不得直接引入远端现有 `0.9.2` 提交。
+- 本机 `1.0.0` 分支为 `codex/1.0.0-personal-growth-system`，从本机独立实现的 `0.9.2` 提交 `d9ed59b` 继续；不得改从 `main` 或远端 M9.2 分支取代码。
 
 ## 开发流程
+
+当前本机迭代为 `1.1.0`，分支 `codex/1.1.0-private-category-planning`，承接原 1.0 工作区全部改动。仍以 `d9ed59b` / `7d2fdfc` 为来源，不引入远端 main。1.1 产品与隐私边界见 `docs/V1_1_PLANNING_PRIVACY.md`。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。
@@ -47,6 +50,8 @@
    - `cargo test --locked --manifest-path src-tauri/Cargo.toml`
 6. 前端安装统一使用 `npm ci`，Cargo 验证统一使用 `--locked`。
 7. Windows 发行变更必须真实构建目标安装包并核对文件名与 SHA-256。
+   - 用户于 2026-09-06 取消每轮完整 demo 验收要求，改为用户自行试用反馈。保留相关自动化测试和编译检查，不再反复执行或核查完整桌面 demo 门禁。
+   - 如需针对性演示，使用隔离数据库和测试 Vault，禁止写入真实个人记录。
 8. 使用独立分支和 PR；CI 全绿后再合并。
 
 ## 版本与产物

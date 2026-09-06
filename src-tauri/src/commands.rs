@@ -108,6 +108,8 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
 pub(crate) fn set_task_status_core(connection: &mut Connection, input: SetTaskStatusInput) -> Result<DayState, String> {
     validate_choice(&input.status, &["not_started", "in_progress", "waiting", "blocked", "completed", "deferred", "cancelled"], "任务状态")?;
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let belongs:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM task_day_instances d WHERE d.id=?1 AND d.work_date=?2 AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=d.id))",params![input.instance_id,input.work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if !belongs{return Err("任务不属于所选日期，或安排已移除".into());}
     let (task_id, display_code, title) = task_info(&transaction, &input.instance_id)?;
     let now = db::now_iso();
     let completed_at = if input.status == "completed" { Some(now.clone()) } else { None };
@@ -157,10 +159,20 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     let session_id = db::new_id();
     let segment_id = db::new_id();
     let now = db::now_iso();
-    let target = (Utc::now() + Duration::seconds(input.planned_seconds)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let timer_settings = crate::timer::load_settings_tx(&transaction)?;
+    let timer_mode = if timer_settings.timer_mode == "countUp" { "count_up" } else { "countdown" };
+    let target = if timer_mode == "countdown" {
+        Some((Utc::now() + Duration::seconds(input.planned_seconds)).to_rfc3339_opts(SecondsFormat::Millis, true))
+    } else {
+        None
+    };
     transaction.execute(
         "INSERT INTO focus_sessions(id,work_date,status,primary_task_instance_id,planned_seconds,remaining_seconds,target_end_at_utc,started_at_utc,active_guard) VALUES(?1,?2,'running',?3,?4,?4,?5,?6,1)",
         params![session_id, input.work_date, input.task_id, input.planned_seconds, target, now],
+    ).map_err(|error| error.to_string())?;
+    transaction.execute(
+        "INSERT INTO focus_session_modes(focus_session_id,timer_mode,accumulated_seconds,running_started_at_utc) VALUES(?1,?2,0,?3)",
+        params![session_id, timer_mode, if timer_mode == "count_up" { Some(now.clone()) } else { None }],
     ).map_err(|error| error.to_string())?;
     transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![segment_id, session_id, input.task_id, now]).map_err(|error| error.to_string())?;
     transaction.execute("UPDATE task_day_instances SET day_status='in_progress',updated_at_utc=?1 WHERE id=?2 AND day_status='not_started'", params![now, input.task_id]).map_err(|error| error.to_string())?;
@@ -180,10 +192,22 @@ pub(crate) fn pause_focus_core(connection: &mut Connection, input: PauseFocusInp
     ).map_err(|_| "当前没有进行中的专注".to_string())?;
     if status != "running" { return Err("当前专注不是运行状态".into()); }
     let remaining = db::remaining_from_target(&status, stored, &target);
+    let mode: Option<(String, i64, Option<String>)> = transaction.query_row(
+        "SELECT timer_mode,accumulated_seconds,running_started_at_utc FROM focus_session_modes WHERE focus_session_id=?1",
+        [&session_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).optional().map_err(|error| error.to_string())?;
+    let count_up = mode.as_ref().is_some_and(|(mode, _, _)| mode == "count_up");
+    let elapsed = if count_up { mode.as_ref().map(|(_, accumulated, running_started)| accumulated + db::elapsed_from_start(running_started)).unwrap_or(0) } else { (stored - remaining).max(0) };
+    if count_up {
+        transaction.execute(
+            "UPDATE focus_session_modes SET accumulated_seconds=?1,running_started_at_utc=NULL WHERE focus_session_id=?2",
+            params![elapsed, session_id],
+        ).map_err(|error| error.to_string())?;
+    }
     transaction.execute("UPDATE focus_sessions SET status='paused',remaining_seconds=?1,target_end_at_utc=NULL WHERE id=?2", params![remaining, session_id]).map_err(|error| error.to_string())?;
     db::append_event(
         &transaction, "focus.paused", "focus", &session_id, &input.work_date, "detail",
-        &format!("暂停本轮工作：{reason}"), Some(&format!("剩余{}分钟", (remaining + 59) / 60)), &db::new_id(),
+        &format!("暂停本轮工作：{reason}"), Some(&if count_up { format!("已专注{}分钟", (elapsed + 30) / 60) } else { format!("剩余{}分钟", (remaining + 59) / 60) }), &db::new_id(),
     )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -196,8 +220,15 @@ pub(crate) fn resume_focus_core(connection: &mut Connection, input: FocusActionI
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ).map_err(|_| "当前没有暂停的专注".to_string())?;
     if status != "paused" { return Err("当前专注不是暂停状态".into()); }
-    let target = (Utc::now() + Duration::seconds(remaining)).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let mode: Option<String> = transaction.query_row(
+        "SELECT timer_mode FROM focus_session_modes WHERE focus_session_id=?1", [&session_id], |row| row.get(0),
+    ).optional().map_err(|error| error.to_string())?;
+    let count_up = mode.as_deref() == Some("count_up");
+    let target = if count_up { None } else { Some((Utc::now() + Duration::seconds(remaining)).to_rfc3339_opts(SecondsFormat::Millis, true)) };
     transaction.execute("UPDATE focus_sessions SET status='running',target_end_at_utc=?1 WHERE id=?2", params![target, session_id]).map_err(|error| error.to_string())?;
+    if count_up {
+        transaction.execute("UPDATE focus_session_modes SET running_started_at_utc=?1 WHERE focus_session_id=?2", params![db::now_iso(), session_id]).map_err(|error| error.to_string())?;
+    }
     db::append_event(&transaction, "focus.resumed", "focus", &session_id, &input.work_date, "detail", "继续本轮工作", None, &db::new_id())?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -234,11 +265,21 @@ pub(crate) fn complete_focus_core(connection: &mut Connection, input: CompleteFo
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
     ).map_err(|_| "当前没有进行中的专注".to_string())?;
     let remaining = db::remaining_from_target(&status, stored, &target);
-    let actual = (planned - remaining).max(0);
+    let mode: Option<(String, i64, Option<String>)> = transaction.query_row(
+        "SELECT timer_mode,accumulated_seconds,running_started_at_utc FROM focus_session_modes WHERE focus_session_id=?1",
+        [&session_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).optional().map_err(|error| error.to_string())?;
+    let count_up = mode.as_ref().is_some_and(|(mode, _, _)| mode == "count_up");
+    let actual = if count_up {
+        mode.as_ref().map(|(_, accumulated, running_started)| accumulated + if status == "running" { db::elapsed_from_start(running_started) } else { 0 }).unwrap_or(0)
+    } else { (planned - remaining).max(0) };
     let final_status = if input.reason == "abandoned" { "abandoned" } else { "completed" };
     let now = db::now_iso();
     transaction.execute("UPDATE focus_sessions SET status=?1,remaining_seconds=?2,target_end_at_utc=NULL,ended_at_utc=?3,active_guard=NULL WHERE id=?4", params![final_status, remaining, now, session_id]).map_err(|error| error.to_string())?;
     transaction.execute("UPDATE focus_segments SET ended_at_utc=?1,allocated_seconds=?2 WHERE focus_session_id=?3 AND ended_at_utc IS NULL", params![now, actual, session_id]).map_err(|error| error.to_string())?;
+    if count_up {
+        transaction.execute("UPDATE focus_session_modes SET accumulated_seconds=?1,running_started_at_utc=NULL WHERE focus_session_id=?2", params![actual, session_id]).map_err(|error| error.to_string())?;
+    }
     let minutes = ((actual + 30) / 60).max(1);
     let title = if input.reason == "abandoned" { format!("放弃本轮工作，已进行{minutes}分钟") } else { format!("完成一轮工作，共{minutes}分钟") };
     db::append_event(&transaction, &format!("focus.{}", input.reason), "focus", &session_id, &input.work_date, "summary", &title, None, &db::new_id())?;

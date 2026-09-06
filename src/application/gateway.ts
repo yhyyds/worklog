@@ -67,6 +67,7 @@ export interface TimerSettings {
   longBreakMinutes: number
   longBreakInterval: number
   autoStartBreak: boolean
+  timerMode: 'countdown' | 'countUp'
 }
 
 export interface WorklogGateway {

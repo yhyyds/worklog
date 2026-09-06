@@ -111,6 +111,34 @@
   gap: 12px;
 }
 
+.settings-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-choice-grid > button {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dfe6e1;
+  border-radius: 15px;
+  padding: 15px 16px;
+  background: #fff;
+  color: #4f5d55;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-choice-grid > button.selected {
+  border-color: #6f927e;
+  background: #edf5f0;
+  box-shadow: inset 0 0 0 1px #6f927e;
+}
+
+.settings-choice-grid b { font-size: 13px; }
+.settings-choice-grid small { color: #78857e; font-size: 11px; line-height: 1.5; }
+.timer-mode-grid { margin-bottom: 14px; }
+
 .settings-number-grid > label {
   display: grid;
   gap: 8px;

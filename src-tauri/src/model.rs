@@ -38,6 +38,9 @@ pub struct FocusSession {
     pub remaining_seconds: i64,
     pub target_end_at: Option<String>,
     pub started_at: String,
+    pub timer_mode: String,
+    pub elapsed_seconds: i64,
+    pub running_started_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

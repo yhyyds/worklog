@@ -1,0 +1,5 @@
+export interface Counts { planned: number; completed: number; focusMinutes: number; habitDone: number; habitReviewed: number; habitPending: number; habitBreaks: number; habitBestStreak: number; goalRequired: number; goalDone: number; goalOptionalDone: number; goalOptional: number }
+export interface CategorySummary { name: string; color: string; counts: Counts }
+export interface Overview { weekStart: string; weekEnd: string; through: string; sharing: boolean; counts: Counts; categories: CategorySummary[]; daily: Array<{ date: string; counts: Counts }>; history: Array<{ date: string; counts: Counts }>; names: Array<{ name: string; kind: string; done: number; total: number }>; quote: { id: string; text: string; author: string; source: string } }
+export const goalRate = (c: Counts) => c.goalRequired ? Math.floor((c.goalDone + c.goalOptionalDone) * 100 / c.goalRequired) : null
+export const goalAward = (c: Counts) => c.goalRequired > 0 && c.goalDone >= c.goalRequired ? c.goalOptional > 0 && c.goalOptionalDone >= c.goalOptional ? '金杯' : c.goalOptionalDone > 0 ? '银杯' : '铜杯' : ''

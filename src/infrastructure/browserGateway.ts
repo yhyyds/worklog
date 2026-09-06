@@ -1,4 +1,4 @@
-import { id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
+import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
 import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
 
@@ -68,7 +68,8 @@ export class BrowserGateway implements WorklogGateway {
     const task = findTask(day, taskId)
     if (task.parentId) throw new Error('专注事项只能选择一级任务')
     const now = Date.now()
-    return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: new Date(now + plannedSeconds * 1000).toISOString(), startedAt: new Date(now).toISOString() }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${task.displayCode} ${task.title}`)] })
+    const timerMode = (await this.getTimerSettings()).timerMode
+    return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: timerMode === 'countdown' ? new Date(now + plannedSeconds * 1000).toISOString() : null, startedAt: new Date(now).toISOString(), timerMode: timerMode === 'countUp' ? 'count_up' : 'countdown', elapsedSeconds: 0, runningStartedAt: timerMode === 'countUp' ? new Date(now).toISOString() : null }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${task.displayCode} ${task.title}`)] })
   }
 
   async pauseFocus(workDate: string, reason: string) {
@@ -77,13 +78,14 @@ export class BrowserGateway implements WorklogGateway {
     const day = loadDay(workDate)
     if (!day.focus || day.focus.status !== 'running') throw new Error('当前没有可暂停的专注')
     const remaining = remainingSeconds(day.focus)
-    return commit({ ...day, focus: { ...day.focus, status: 'paused', remainingSeconds: remaining, targetEndAt: null }, timeline: [...day.timeline, timelineEvent('focus.paused', `暂停本轮工作：${pauseReason}`, 'detail', `剩余${Math.ceil(remaining / 60)}分钟`)] })
+    const elapsedSeconds = day.focus.timerMode === 'count_up' ? day.focus.elapsedSeconds + (day.focus.runningStartedAt ? Math.max(0, Math.floor((Date.now() - new Date(day.focus.runningStartedAt).getTime()) / 1000)) : 0) : day.focus.elapsedSeconds
+    return commit({ ...day, focus: { ...day.focus, status: 'paused', remainingSeconds: remaining, targetEndAt: null, elapsedSeconds, runningStartedAt: null }, timeline: [...day.timeline, timelineEvent('focus.paused', `暂停本轮工作：${pauseReason}`, 'detail', day.focus.timerMode === 'count_up' ? `已专注${Math.ceil(elapsedSeconds / 60)}分钟` : `剩余${Math.ceil(remaining / 60)}分钟`)] })
   }
 
   async resumeFocus(workDate: string) {
     const day = loadDay(workDate)
     if (!day.focus || day.focus.status !== 'paused') throw new Error('当前没有已暂停的专注')
-    return commit({ ...day, focus: { ...day.focus, status: 'running', targetEndAt: new Date(Date.now() + day.focus.remainingSeconds * 1000).toISOString() }, timeline: [...day.timeline, timelineEvent('focus.resumed', '继续本轮工作', 'detail')] })
+    return commit({ ...day, focus: { ...day.focus, status: 'running', runningStartedAt: day.focus.timerMode === 'count_up' ? new Date().toISOString() : day.focus.runningStartedAt, targetEndAt: day.focus.timerMode === 'countdown' ? new Date(Date.now() + day.focus.remainingSeconds * 1000).toISOString() : null }, timeline: [...day.timeline, timelineEvent('focus.resumed', '继续本轮工作', 'detail')] })
   }
 
   async switchFocus(workDate: string, taskId: string) {
@@ -98,7 +100,7 @@ export class BrowserGateway implements WorklogGateway {
   async completeFocus(workDate: string, reason: 'elapsed' | 'early_complete' | 'abandoned') {
     const day = loadDay(workDate)
     if (!day.focus) return day
-    const actual = Math.max(0, day.focus.plannedSeconds - remainingSeconds(day.focus))
+    const actual = day.focus.timerMode === 'count_up' ? elapsedFocusSeconds(day.focus) : Math.max(0, day.focus.plannedSeconds - remainingSeconds(day.focus))
     const minutes = Math.max(1, Math.round(actual / 60))
     const title = reason === 'abandoned' ? `放弃本轮工作，已进行${minutes}分钟` : `完成一轮工作，共${minutes}分钟`
     const settings = await this.getTimerSettings()
@@ -136,7 +138,7 @@ export class BrowserGateway implements WorklogGateway {
 
   async getTimerSettings(): Promise<TimerSettings> {
     const raw = localStorage.getItem('worklog.timer.settings')
-    return raw ? JSON.parse(raw) as TimerSettings : { workMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakInterval: 4, autoStartBreak: true }
+    return raw ? { timerMode: 'countdown', ...JSON.parse(raw) } as TimerSettings : { workMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, longBreakInterval: 4, autoStartBreak: true, timerMode: 'countdown' }
   }
 
   async saveTimerSettings(settings: TimerSettings) {

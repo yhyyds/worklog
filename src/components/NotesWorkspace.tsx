@@ -206,7 +206,7 @@ export default function NotesWorkspace() {
           {message && <div className="note-message">{message}</div>}
           {external && <div className="external-change"><span>Obsidian 中的文件已发生变化，且当前编辑器有未保存内容。</span><button onClick={() => { setNote(external); setContent(external.content); setSavedContent(external.content); setExternal(null) }}>载入外部版本</button><button onClick={() => setExternal(null)}>保留当前内容</button></div>}
 
-          {!note && !newNote ? <div className="note-welcome"><b>选择一篇 Markdown，或新建随笔</b><span>文件直接保存在 Obsidian 工作区中，Worklog 不复制第二份正文。</span></div> : <div className={`editor-grid ${mode}`}>
+          {!note && !newNote ? <div className="note-welcome"><b>选择一篇 Markdown，或新建随笔</b><span>笔记保存在所选 Obsidian 工作区。</span></div> : <div className={`editor-grid ${mode}`}>
             {mode !== 'preview' && <textarea className="markdown-input" value={content} onChange={(event) => setContent(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void save() } }} placeholder="# 从这里开始写…"/>}
             {mode !== 'edit' && <article className="markdown-rendered">{preview}</article>}
           </div>}

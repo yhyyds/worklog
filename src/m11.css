@@ -1,0 +1,31 @@
+.weekly-backdrop { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 24px; background: rgba(27, 34, 30, .5); backdrop-filter: blur(11px); }
+.weekly-workspace { width: min(1060px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: hidden; border: 1px solid #dbe5de; border-radius: 28px; background: #f4f8f3; box-shadow: 0 30px 90px rgba(18, 29, 22, .3); color: #2c3931; }
+.weekly-workspace > header { display: flex; align-items: center; justify-content: space-between; padding: 20px 28px; border-bottom: 1px solid #dfe7e1; background: #f9fbf8; }
+.weekly-workspace > header small, .weekly-page section > header small { color: #63806d; font-size: 9px; font-weight: 800; letter-spacing: .16em; }
+.weekly-workspace > header h2 { margin: 3px 0 0; font-size: 25px; }
+.weekly-workspace > header > div:last-child { display: flex; align-items: center; gap: 7px; }
+.weekly-workspace > header button, .weekly-workspace > header input { border: 1px solid #dbe4de; border-radius: 9px; padding: 7px 9px; background: #fff; color: #536159; font: inherit; cursor: pointer; }
+.weekly-workspace > header .weekly-close { margin-left: 7px; border: 0; font-size: 20px; }
+.weekly-page { max-height: calc(100vh - 132px); overflow: auto; padding: 22px 28px 30px; }
+.weekly-hero { padding: 25px; border-radius: 20px; background: linear-gradient(135deg, #dcecdf, #f7f3df); }
+.weekly-hero h3 { max-width: 760px; margin: 8px 0; font: 700 28px/1.35 "STKaiti", "Microsoft YaHei", sans-serif; }
+.weekly-hero p { max-width: 820px; margin: 0; color: #5e6f64; font-size: 12px; line-height: 1.75; }
+.weekly-numbers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+.weekly-numbers > div { display: grid; gap: 7px; padding: 14px; border: 1px solid #dfe7e1; border-radius: 15px; background: #fff; }
+.weekly-numbers small, .weekly-numbers span { color: #7b887f; font-size: 9px; }
+.weekly-numbers strong { font-size: 24px; }
+.weekly-numbers strong i { margin-left: 3px; color: #7f8c84; font-size: 10px; font-style: normal; }
+.weekly-chart, .weekly-goals { padding: 18px; border: 1px solid #dfe7e1; border-radius: 18px; background: #fff; }
+.weekly-chart > header, .weekly-goals > header { display: flex; align-items: end; justify-content: space-between; }
+.weekly-chart h3, .weekly-goals h3 { margin: 3px 0 0; font-size: 16px; }
+.weekly-chart > header > span { color: #849087; font-size: 9px; }
+.weekly-chart > div { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 190px; margin-top: 15px; }
+.weekly-chart > div > div { display: grid; grid-template-rows: auto 1fr auto auto; justify-items: center; gap: 5px; min-width: 0; color: #738077; font-size: 9px; }
+.weekly-chart i { display: flex; align-items: end; width: 23px; overflow: hidden; border-radius: 8px; background: #edf2ee; }
+.weekly-chart i b { display: block; width: 100%; border-radius: 8px; background: linear-gradient(#8bb89b, #5f8f70); }
+.weekly-chart strong { font-size: 10px; }.weekly-chart strong small { font-size: 8px; }.weekly-chart em { color: #8b958f; font-size: 8px; font-style: normal; }
+.weekly-goals { margin-top: 12px; }.weekly-goals > div { display: grid; grid-template-columns: 180px 1fr 45px; align-items: center; gap: 10px; margin-top: 12px; }.weekly-goals > div > span { display: grid; gap: 2px; }.weekly-goals > div > span b { font-size: 10px; }.weekly-goals > div > span small { color: #869189; font-size: 8px; }.weekly-goals > div > i { height: 8px; overflow: hidden; border-radius: 999px; background: #edf2ee; }.weekly-goals > div > i b { display: block; height: 100%; background: #79a98a; }.weekly-goals > div > strong { font-size: 10px; }
+.weekly-page blockquote { margin: 12px 0; padding: 22px 25px; border: 0; border-radius: 18px; background: #e9f1e9; }.weekly-page blockquote p { margin: 0; color: #344b3b; font: 20px/1.7 "STKaiti", "Microsoft YaHei", serif; }.weekly-page blockquote footer { margin-top: 8px; color: #718177; font-size: 10px; }
+.weekly-footer { display: flex; align-items: center; justify-content: space-between; color: #849087; font-size: 9px; }.weekly-footer button { border: 0; border-radius: 11px; padding: 10px 14px; background: #426b51; color: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
+.weekly-error, .weekly-success, .weekly-empty { margin: 12px 28px; padding: 10px 12px; border-radius: 10px; background: #fff0ed; color: #974c3d; font-size: 11px; }.weekly-success { background: #e7f3eb; color: #3d6d50; }.weekly-empty { background: #eef3ef; color: #718077; }
+@media (max-width: 740px) { .weekly-backdrop { padding: 0; } .weekly-workspace { width: 100vw; max-height: 100vh; border-radius: 0; }.weekly-workspace > header { align-items: flex-start; gap: 10px; }.weekly-workspace > header > div:last-child { flex-wrap: wrap; justify-content: flex-end; }.weekly-page { max-height: calc(100vh - 105px); padding: 16px; }.weekly-numbers { grid-template-columns: repeat(2, 1fr); }.weekly-goals > div { grid-template-columns: 120px 1fr 40px; } }

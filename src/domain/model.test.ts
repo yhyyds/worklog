@@ -21,7 +21,7 @@ describe('每日显示编号', () => {
 
 describe('计时恢复', () => {
   it('依据目标结束时间计算，而不是依赖递减计数', () => {
-    const focus: FocusSession = { id: 'f', taskId: 'a', status: 'running', plannedSeconds: 1500, remainingSeconds: 1500, targetEndAt: '2026-09-02T10:25:00.000Z', startedAt: '2026-09-02T10:00:00.000Z' }
+    const focus: FocusSession = { id: 'f', taskId: 'a', status: 'running', plannedSeconds: 1500, remainingSeconds: 1500, targetEndAt: '2026-09-02T10:25:00.000Z', startedAt: '2026-09-02T10:00:00.000Z', timerMode: 'countdown', elapsedSeconds: 0, runningStartedAt: null }
     expect(remainingSeconds(focus, Date.parse('2026-09-02T10:10:00.000Z'))).toBe(900)
   })
 })

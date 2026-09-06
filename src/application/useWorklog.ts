@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { emptyDay, localDate, type EntryType, type Importance, type ReviewLevel, type TaskStatus, type Urgency } from '../domain/model'
 import { createGateway } from '../infrastructure/createGateway'
+import { canRollDay } from '../domain/dayRollover'
 
 export function useWorklog() {
   const gateway = useMemo(createGateway, [])
-  const workDate = useMemo(localDate, [])
+  const [workDate, setWorkDate] = useState(localDate)
   const [day, setDay] = useState(() => emptyDay(workDate))
   const [workMinutes, setWorkMinutes] = useState(25)
+  const [timerMode, setTimerMode] = useState<'countdown' | 'countUp'>('countdown')
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const refreshDate = () => {
+      const today = localDate()
+      if (canRollDay(workDate, today, busy, !!day.focus || !!day.rest)) {
+        setBusy(true); setDay(emptyDay(today)); setWorkDate(today)
+      }
+    }
+    const interval = window.setInterval(refreshDate, 30000)
+    window.addEventListener('focus', refreshDate)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', refreshDate) }
+  }, [workDate, busy, day.focus, day.rest])
 
   const run = useCallback(async (operation: () => ReturnType<typeof gateway.getDaySnapshot>) => {
     setBusy(true); setError(null)
@@ -26,7 +40,10 @@ export function useWorklog() {
 
   useEffect(() => {
     const reloadTimer = () => {
-      void gateway.getTimerSettings().then((settings) => setWorkMinutes(settings.workMinutes)).catch(() => undefined)
+      void gateway.getTimerSettings().then((settings) => {
+        setWorkMinutes(settings.workMinutes)
+        setTimerMode(settings.timerMode)
+      }).catch(() => undefined)
     }
     reloadTimer()
     window.addEventListener('worklog:timer-settings-changed', reloadTimer)
@@ -34,7 +51,7 @@ export function useWorklog() {
   }, [gateway])
 
   return {
-    day, workDate, workMinutes, busy, error, clearError: () => setError(null),
+    day, workDate, workMinutes, timerMode, busy, error, clearError: () => setError(null),
     createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd })),
     updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),

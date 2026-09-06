@@ -41,16 +41,6 @@ export default function DesktopIntegration() {
         console.warn('Timer event integration unavailable', reason)
       }
 
-      try {
-        const unlisten = await windowHandle.onCloseRequested((event) => {
-          event.preventDefault()
-          void windowHandle.hide()
-        })
-        if (disposed) unlisten()
-        else cleanups.push(unlisten)
-      } catch (reason) {
-        console.warn('Window close integration unavailable', reason)
-      }
     })()
 
     return () => {

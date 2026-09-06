@@ -103,6 +103,35 @@
 }
 
 .vault-card .vault-actions { flex: none; display: flex; gap: 8px; }
+
+.history-panel { width: min(1040px, 100%); }
+.history-date-bar { display: flex; align-items: end; justify-content: center; gap: 12px; margin-bottom: 16px; }
+.history-date-bar label { display: grid; gap: 5px; color: #746f78; font-size: 11px; font-weight: 700; }
+.history-date-bar input, .history-date-bar button { border: 1px solid #ded8e5; border-radius: 10px; padding: 9px 12px; background: #fff; color: #46404f; font: inherit; }
+.history-date-bar button { cursor: pointer; }
+.history-date-bar button:disabled { cursor: default; opacity: .45; }
+.history-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+.history-summary > div { display: grid; gap: 6px; padding: 14px; border: 1px solid #e4dfea; border-radius: 14px; background: #fff; }
+.history-summary span { color: #7b7580; font-size: 11px; }
+.history-summary strong { color: #302d35; font-size: 21px; }
+.history-summary strong small { color: #918b94; font-size: 12px; }
+.history-summary .sync-clean { color: #357250; }
+.history-summary .sync-error, .history-summary .sync-conflict { color: #a2493d; }
+.history-summary .sync-dirty { color: #9a712c; }
+.history-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.history-grid > section { min-width: 0; padding: 15px; border: 1px solid #e4dfea; border-radius: 14px; background: #fff; }
+.history-grid h3 { margin: 0 0 12px; color: #3a3540; font-size: 14px; }
+.history-list { display: grid; align-content: start; gap: 8px; max-height: 220px; overflow: auto; }
+.history-list > p { margin: 0; color: #8a848d; font-size: 12px; }
+.history-list > div { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #f0edf2; color: #5d5761; font-size: 11px; line-height: 1.5; }
+.history-list > div.done { color: #829087; }
+.history-list > div.done b { text-decoration: line-through; }
+.history-list time { flex: 0 0 38px; color: #928b96; }
+.history-list b { font-weight: 600; }
+.markdown-preview > summary { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; cursor: pointer; color: #766f7e; }
+.obsidian-error { display: grid; gap: 4px; }
 @media (max-width: 700px) {
   .vault-card .vault-actions { align-items: stretch; flex-direction: column; }
+  .history-date-bar { flex-wrap: wrap; }
+  .history-grid, .history-summary { grid-template-columns: 1fr; }
 }

@@ -7,6 +7,8 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::{Component, Path, PathBuf},
+    thread,
+    time::Duration,
 };
 use tauri::State;
 
@@ -49,6 +51,17 @@ pub struct SyncResult {
 pub struct FocusRoundReview {
     pub started_at: String,
     pub ended_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyNoteSyncStatus {
+    pub work_date: String,
+    pub relative_path: String,
+    pub sync_state: String,
+    pub last_error: Option<String>,
+    pub last_attempt_at: Option<String>,
+    pub last_success_at: Option<String>,
 }
 
 fn load_focus_rounds(connection: &Connection, work_date: &str) -> Result<Vec<FocusRoundReview>, String> {
@@ -336,6 +349,34 @@ pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     result
 }
 
+fn retry_atomic_write(
+    path: &Path,
+    content: &str,
+    delays: &[u64],
+    mut pause: impl FnMut(u64),
+) -> Result<(), String> {
+    let mut last_error = None;
+    for (attempt, delay) in delays.iter().enumerate() {
+        if attempt > 0 {
+            pause(*delay);
+        }
+        match atomic_write(path, content) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(format!(
+        "{}；日记可能正被 Obsidian 或其他程序占用，已保留备份与失败状态，可稍后重新保存",
+        last_error.unwrap_or_else(|| "无法写入日记".to_string())
+    ))
+}
+
+fn atomic_write_with_retry(path: &Path, content: &str) -> Result<(), String> {
+    retry_atomic_write(path, content, &[0, 150, 400, 900], |delay| {
+        thread::sleep(Duration::from_millis(delay));
+    })
+}
+
 #[cfg(windows)]
 fn replace_file(temp: &Path, destination: &Path) -> io::Result<()> {
     if !destination.exists() {
@@ -387,6 +428,45 @@ fn record_sync_state(
     Ok(())
 }
 
+fn sync_status_core(
+    connection: &Connection,
+    work_date: &str,
+) -> Result<DailyNoteSyncStatus, String> {
+    chrono::NaiveDate::parse_from_str(work_date, "%Y-%m-%d")
+        .map_err(|_| "日期必须为 YYYY-MM-DD".to_string())?;
+    let settings = load_settings(connection)?;
+    let expected_path = daily_relative_path(&settings, work_date)?;
+    connection
+        .query_row(
+            "SELECT work_date,relative_path,sync_state,last_error,last_attempt_at_utc,last_success_at_utc
+             FROM daily_note_sync WHERE work_date=?1",
+            [work_date],
+            |row| {
+                Ok(DailyNoteSyncStatus {
+                    work_date: row.get(0)?,
+                    relative_path: row.get(1)?,
+                    sync_state: row.get(2)?,
+                    last_error: row.get(3)?,
+                    last_attempt_at: row.get(4)?,
+                    last_success_at: row.get(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .map(Ok)
+        .unwrap_or_else(|| {
+            Ok(DailyNoteSyncStatus {
+                work_date: work_date.to_string(),
+                relative_path: expected_path.to_string_lossy().to_string(),
+                sync_state: "dirty".to_string(),
+                last_error: None,
+                last_attempt_at: None,
+                last_success_at: None,
+            })
+        })
+}
+
 fn sync_core(connection: &Connection, work_date: &str) -> Result<SyncResult, String> {
     let settings = load_settings(connection)?;
     let vault_text = settings.vault_path.clone().ok_or("请先选择 Obsidian 工作区")?;
@@ -419,7 +499,7 @@ fn sync_core(connection: &Connection, work_date: &str) -> Result<SyncResult, Str
     } else {
         None
     };
-    if let Err(error) = atomic_write(&destination, &merged) {
+    if let Err(error) = atomic_write_with_retry(&destination, &merged) {
         record_sync_state(connection, work_date, &relative_text, "error", None, Some(&error), false)?;
         return Err(error);
     }
@@ -461,6 +541,15 @@ pub fn preview_daily_note(database: State<'_, Database>, work_date: String) -> R
 pub fn sync_daily_note(database: State<'_, Database>, work_date: String) -> Result<SyncResult, String> {
     let connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
     sync_core(&connection, &work_date)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_daily_note_sync_status(
+    database: State<'_, Database>,
+    work_date: String,
+) -> Result<DailyNoteSyncStatus, String> {
+    let connection = database.0.lock().map_err(|_| "database lock poisoned".to_string())?;
+    sync_status_core(&connection, &work_date)
 }
 
 #[cfg(test)]
@@ -584,6 +673,15 @@ mod tests {
         );
         assert_eq!(records_section(&markdown), expected);
         assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn unsynced_day_reports_a_dirty_retryable_state() {
+        let connection = Connection::open_in_memory().unwrap();
+        db::initialize(&connection).unwrap();
+        let status = sync_status_core(&connection, "2026-09-02").unwrap();
+        assert_eq!(status.sync_state, "dirty");
+        assert!(status.last_error.is_none());
     }
 
     #[test]

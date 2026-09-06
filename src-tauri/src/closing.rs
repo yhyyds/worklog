@@ -64,13 +64,14 @@ fn is_carry_candidate(status: &str) -> bool {
 }
 
 fn preview_core(connection: &Connection, work_date: &str) -> Result<EndOfDayPreview, String> {
+    let no_carry=crate::planning::no_carry_tasks(connection)?;
     let day = db::read_day(connection, work_date)?;
     let already_closed = connection
         .query_row("SELECT 1 FROM day_closures WHERE work_date=?1", [work_date], |_| Ok(true))
         .optional()
         .map_err(|error| error.to_string())?
         .unwrap_or(false);
-    let candidates = day.tasks.iter().filter(|task| is_carry_candidate(&task.status)).map(|task| CarryCandidate {
+    let candidates = day.tasks.iter().filter(|task| is_carry_candidate(&task.status) && !no_carry.contains(&task.permanent_task_id)).map(|task| CarryCandidate {
         instance_id: task.id.clone(),
         permanent_task_id: task.permanent_task_id.clone(),
         parent_id: task.parent_id.clone(),
@@ -115,9 +116,10 @@ fn close_day_core(connection: &mut Connection, input: CloseDayInput) -> Result<C
     }
 
     let source_day = db::read_day(connection, &input.work_date)?;
+    let no_carry=crate::planning::no_carry_tasks(connection)?;
     let selected: HashSet<_> = input.selected_instance_ids.iter().cloned().collect();
     let eligible: HashSet<_> = source_day.tasks.iter()
-        .filter(|task| is_carry_candidate(&task.status))
+        .filter(|task| is_carry_candidate(&task.status) && !no_carry.contains(&task.permanent_task_id))
         .map(|task| task.id.clone())
         .collect();
     if let Some(invalid) = selected.iter().find(|id| !eligible.contains(*id)) {
@@ -277,6 +279,25 @@ mod tests {
         assert_eq!(preview.completed_count, 1);
         assert_eq!(preview.candidates.len(), 1);
         assert_eq!(preview.candidates[0].instance_id, open.id);
+    }
+
+    #[test]
+    fn repeating_goal_and_children_cannot_carry_but_one_off_keeps_progress_link() {
+        for kind in ["repeating", "one_off"] {
+            let mut c=connection();let root=create(&mut c,"目标任务",None);let child=create(&mut c,"子任务",Some(root.id.clone()));
+            c.execute_batch("INSERT INTO long_term_goals(id,title,cycle_days,start_date,created_at_utc,updated_at_utc) VALUES('g','目标',30,'2026-09-01','now','now'); INSERT INTO goal_phases(id,goal_id,title,start_date,end_date,created_at_utc,updated_at_utc) VALUES('p','g','阶段','2026-09-01','2026-09-30','now','now'); INSERT INTO goal_actions(id,phase_id,title,action_kind,required,target_count,created_at_utc,updated_at_utc) VALUES('a','p','任务','one_off',1,1,'now','now');").unwrap();
+            c.execute("INSERT INTO goal_action_occurrences VALUES('o','a',?1,'2026-09-02',?2,1)",params![root.permanent_task_id,kind]).unwrap();
+            if kind=="repeating" {
+                assert!(preview_core(&c,"2026-09-02").unwrap().candidates.is_empty());
+                assert!(close_day_core(&mut c,CloseDayInput{work_date:"2026-09-02".into(),next_work_date:"2026-09-03".into(),selected_instance_ids:vec![child.id]}).is_err());
+                assert!(db::read_day(&c,"2026-09-03").unwrap().tasks.is_empty());
+            } else {
+                let day=close(&mut c,vec![root.id]).next_day;
+                commands::set_task_status_core(&mut c,SetTaskStatusInput{work_date:day.work_date,instance_id:day.tasks[0].id.clone(),status:"completed".into()}).unwrap();
+                assert_eq!(crate::growth::list_goals_core(&c).unwrap()[0].progress_percent,100);
+                assert_eq!(crate::planning::occurrences(&c,"a").unwrap().len(),1);
+            }
+        }
     }
 
     #[test]

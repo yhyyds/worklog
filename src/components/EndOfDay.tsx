@@ -93,7 +93,7 @@ export default function EndOfDay() {
     {visible && <div className="closing-backdrop" onMouseDown={() => setVisible(false)}>
       <section className="closing-panel" role="dialog" aria-modal="true" aria-label="日终收尾" onMouseDown={(event) => event.stopPropagation()}>
         <header>
-          <div><small>END OF DAY</small><h2>日终收尾</h2><p>确认今天的成果，只把仍需继续的部分带到明天。</p></div>
+          <div><small>END OF DAY</small><h2>日终收尾</h2><p>选择需要顺延到明天的任务。</p></div>
           <button onClick={() => setVisible(false)} aria-label="关闭">×</button>
         </header>
 
@@ -128,7 +128,7 @@ export default function EndOfDay() {
 
           {result && <div className="closing-result">
             <div className="result-mark">✓</div>
-            <h3>今天已妥善收好</h3>
+            <h3>日终收尾完成</h3>
             <p>{message}</p>
             <h4>明日任务草稿 · {result.nextDay.workDate}</h4>
             <ul>{result.nextDay.tasks.map((task: DayTask) => <li key={task.id}><span>{task.displayCode}</span>{task.title}</li>)}</ul>

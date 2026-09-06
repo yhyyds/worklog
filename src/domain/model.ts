@@ -35,6 +35,9 @@ export interface FocusSession {
   remainingSeconds: number
   targetEndAt: string | null
   startedAt: string
+  timerMode: 'countdown' | 'count_up'
+  elapsedSeconds: number
+  runningStartedAt: string | null
 }
 
 export interface RestSession {
@@ -84,6 +87,11 @@ export function incompleteFirst<T extends Pick<DayTask, 'status'>>(tasks: T[]): 
 export function remainingSeconds(focus: Pick<FocusSession, 'status' | 'remainingSeconds' | 'targetEndAt'>, now = Date.now()): number {
   if (focus.status === 'paused' || !focus.targetEndAt) return focus.remainingSeconds
   return Math.max(0, Math.ceil((new Date(focus.targetEndAt).getTime() - now) / 1000))
+}
+
+export function elapsedFocusSeconds(focus: Pick<FocusSession, 'status' | 'elapsedSeconds' | 'runningStartedAt'>, now = Date.now()): number {
+  const running = focus.status === 'running' && focus.runningStartedAt ? Math.max(0, Math.floor((now - new Date(focus.runningStartedAt).getTime()) / 1000)) : 0
+  return Math.max(0, focus.elapsedSeconds + running)
 }
 
 export function timelineEvent(type: string, title: string, visibility: TimelineEvent['visibility'] = 'summary', detail: string | null = null): TimelineEvent {
