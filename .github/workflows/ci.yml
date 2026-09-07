@@ -28,6 +28,7 @@ jobs:
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
   windows-installer:
+    timeout-minutes: 90
     if: github.event_name == 'pull_request'
     needs: [frontend, rust]
     runs-on: windows-latest
@@ -45,9 +46,11 @@ jobs:
       - run: npm run bundle:windows
       - uses: actions/upload-artifact@v4
         with:
-          name: worklog-windows-installers
+          name: worklog-windows-installers-and-msi
           path: |
             artifacts/windows/*-setup.exe
+            artifacts/windows/*.msi
             artifacts/windows/SHA256SUMS.txt
+            artifacts/windows/BUILD-INFO.txt
           if-no-files-found: error
           retention-days: 7
