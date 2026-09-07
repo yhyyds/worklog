@@ -18,6 +18,16 @@ pub struct DayTask {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct DailySchedule {
+    pub id: String,
+    pub title: String,
+    pub planned_start: String,
+    pub planned_end: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TimelineEvent {
     pub id: String,
     #[serde(rename = "type")]
@@ -60,9 +70,27 @@ pub struct RestSession {
 pub struct DayState {
     pub work_date: String,
     pub tasks: Vec<DayTask>,
+    pub schedules: Vec<DailySchedule>,
     pub timeline: Vec<TimelineEvent>,
     pub focus: Option<FocusSession>,
     pub rest: Option<RestSession>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDailyScheduleInput {
+    pub work_date: String,
+    pub schedule_id: Option<String>,
+    pub title: String,
+    pub planned_start: String,
+    pub planned_end: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelDailyScheduleInput {
+    pub work_date: String,
+    pub schedule_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

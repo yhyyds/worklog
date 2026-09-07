@@ -35,51 +35,36 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
-$artifactNames = @{
-    "no-webview2-nsis" = "Worklog_${version}_x64-no-webview2-setup.exe"
-    "with-webview2-nsis" = "Worklog_${version}_x64-with-webview2-setup.exe"
-    "no-webview2-msi" = "Worklog_${version}_x64-no-webview2.msi"
-}
+$artifactName = "Worklog_${version}_x64-no-webview2-setup.exe"
 
-foreach ($name in $artifactNames.Values) {
-    $path = Join-Path $OutputDirectory $name
-    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
-}
+$artifactPath = Join-Path $OutputDirectory $artifactName
+if (Test-Path -LiteralPath $artifactPath) { Remove-Item -LiteralPath $artifactPath -Force }
 foreach ($name in @("SHA256SUMS.txt", "BUILD-INFO.txt")) {
     $path = Join-Path $OutputDirectory $name
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
 }
 
 function Build-Installer {
-    param(
-        [Parameter(Mandatory = $true)][string]$Variant,
-        [Parameter(Mandatory = $true)][ValidateSet("nsis", "msi")][string]$Bundle,
-        [string]$ConfigPath = ""
-    )
+    param([Parameter(Mandatory = $true)][string]$ConfigPath)
 
-    $bundleDirectory = Join-Path $targetBundleRoot $Bundle
+    $bundleDirectory = Join-Path $targetBundleRoot "nsis"
     New-Item -ItemType Directory -Force -Path $bundleDirectory | Out-Null
     Get-ChildItem -LiteralPath $bundleDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
-    $arguments = @("run", "tauri", "--", "build", "--bundles", $Bundle, "--ci")
-    if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
-        $arguments += @("--config", $ConfigPath)
-    }
+    $arguments = @("run", "tauri", "--", "build", "--bundles", "nsis", "--ci", "--config", $ConfigPath)
 
-    Write-Host "Building $Variant $Bundle package..."
+    Write-Host "Building no-WebView2 NSIS package..."
     & npm.cmd @arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        throw "Tauri build failed for $Variant $Bundle with exit code $LASTEXITCODE"
+        throw "Tauri build failed for no-WebView2 NSIS with exit code $LASTEXITCODE"
     }
 
-    $filter = if ($Bundle -eq "nsis") { "*-setup.exe" } else { "*.msi" }
-    $built = @(Get-ChildItem -LiteralPath $bundleDirectory -Filter $filter -File)
+    $built = @(Get-ChildItem -LiteralPath $bundleDirectory -Filter "*-setup.exe" -File)
     if ($built.Count -ne 1) {
-        throw "Expected exactly one $Bundle package for $Variant, found $($built.Count)"
+        throw "Expected exactly one no-WebView2 NSIS package, found $($built.Count)"
     }
 
-    $key = "$Variant-$Bundle"
-    $destination = Join-Path $OutputDirectory $artifactNames[$key]
+    $destination = Join-Path $OutputDirectory $artifactName
     Copy-Item -LiteralPath $built[0].FullName -Destination $destination
     Get-Item -LiteralPath $destination
 }
@@ -87,20 +72,14 @@ function Build-Installer {
 $lockHashBefore = Get-Sha256Hex -Path $cargoLock
 Push-Location $repoRoot
 try {
-    $withoutWebViewNsis = Build-Installer -Variant "no-webview2" -Bundle "nsis" -ConfigPath "src-tauri/tauri.no-webview2.conf.json"
-    $withWebViewNsis = Build-Installer -Variant "with-webview2" -Bundle "nsis"
-    $withoutWebViewMsi = Build-Installer -Variant "no-webview2" -Bundle "msi" -ConfigPath "src-tauri/tauri.no-webview2.conf.json"
+    $withoutWebViewNsis = Build-Installer -ConfigPath "src-tauri/tauri.no-webview2.conf.json"
 } finally {
     Pop-Location
 }
 $lockHashAfter = Get-Sha256Hex -Path $cargoLock
 
 if ($lockHashBefore -ne $lockHashAfter) { throw "Cargo.lock changed during the package build" }
-if ($withWebViewNsis.Length -le $withoutWebViewNsis.Length) {
-    throw "The offline WebView2 installer should be larger than the no-WebView2 installer"
-}
-
-$packages = @($withoutWebViewNsis, $withWebViewNsis, $withoutWebViewMsi)
+$packages = @($withoutWebViewNsis)
 $checksumLines = foreach ($installer in $packages) {
     $hash = Get-Sha256Hex -Path $installer.FullName
     "$hash  $($installer.Name)"
@@ -126,7 +105,8 @@ $buildInfo = @(
     ""
     "Authenticode note: publisher metadata is not a digital signature."
     "Unsigned packages may be blocked by Microsoft Defender SmartScreen or organization policy."
-    "Use SHA256SUMS.txt for integrity checking and submit the MSI to IT for approved deployment."
+    "This package requires Microsoft Edge WebView2 Runtime to be installed on the target computer."
+    "Use SHA256SUMS.txt for integrity checking and contact IT when organization policy blocks unsigned software."
     ""
 )
 $authenticodeCommand = Get-Command -Name Get-AuthenticodeSignature -ErrorAction SilentlyContinue
@@ -150,7 +130,7 @@ foreach ($installer in $packages) {
 $buildInfoPath = Join-Path $OutputDirectory "BUILD-INFO.txt"
 $buildInfo | Set-Content -LiteralPath $buildInfoPath -Encoding utf8
 
-Write-Host "Windows packages created:"
+Write-Host "Windows package created:"
 $packages | Select-Object Name, Length, FullName | Format-Table -AutoSize
 Write-Host "Checksums: $checksumPath"
 Write-Host "Build information: $buildInfoPath"

@@ -1,0 +1,212 @@
+.fixed-schedule-block {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #dedbd1;
+  border-top: 3px solid #6d8292;
+  border-radius: 14px;
+  background: #f4f6f5;
+}
+
+.fixed-schedule-block > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+
+.fixed-schedule-block > header h3 {
+  margin: 0 0 3px;
+  color: #34413d;
+  font-size: 14px;
+}
+
+.fixed-schedule-block > header p {
+  margin: 0;
+  color: #898e8b;
+  font-size: 10px;
+}
+
+.fixed-schedule-block > header button,
+.fixed-schedule-form > button,
+.fixed-schedule-list article button {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #e3ebe7;
+  color: #456556;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.fixed-schedule-block button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.fixed-schedule-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fixed-schedule-list article {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e1e5e2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.fixed-schedule-list time {
+  color: #557164;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.fixed-schedule-list time span {
+  padding: 0 3px;
+  color: #9aa49e;
+}
+
+.fixed-schedule-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #3a403d;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.fixed-schedule-list article > div {
+  display: flex;
+  gap: 5px;
+}
+
+.fixed-schedule-list article button.danger {
+  background: #f6ebe7;
+  color: #9a5b47;
+}
+
+.fixed-schedule-empty {
+  margin: 0;
+  padding: 18px;
+  color: #999d9a;
+  text-align: center;
+  font-size: 11px;
+}
+
+.fixed-schedule-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 10px;
+  border: 1px solid #d8e0dc;
+  border-radius: 11px;
+  background: #eef2f0;
+}
+
+.fixed-schedule-form > input,
+.fixed-schedule-form .time-range input {
+  min-width: 0;
+  border: 1px solid #cfd9d3;
+  border-radius: 7px;
+  padding: 7px 8px;
+  background: #fff;
+  color: #34413b;
+  font-size: 10px;
+}
+
+.fixed-schedule-form .time-range {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fixed-schedule-form .time-range input {
+  width: 86px;
+}
+
+.fixed-schedule-form > button.cancel {
+  background: transparent;
+  color: #77837c;
+}
+
+.fixed-schedule-form > small {
+  grid-column: 1 / -1;
+  color: #a45f4b;
+  font-size: 9px;
+}
+
+/* 待办弹窗使用可收缩网格，长标题和操作按钮不会再互相挤出可视区。 */
+.inbox-workspace {
+  width: min(1040px, calc(100vw - 48px));
+  max-width: none;
+  min-width: 0;
+}
+
+.inbox-workspace > header,
+.inbox-tabs,
+.inbox-content,
+.inbox-content > *,
+.historical-list {
+  min-width: 0;
+}
+
+.inbox-content {
+  overflow-x: hidden;
+}
+
+.inbox-content form > div,
+.inbox-capture > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.inbox-item,
+.historical-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  width: 100%;
+  min-width: 0;
+}
+
+.inbox-item > div,
+.historical-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inbox-item p,
+.historical-copy p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 860px) {
+  .fixed-schedule-form,
+  .fixed-schedule-list article,
+  .inbox-item,
+  .historical-item,
+  .inbox-content form > div,
+  .inbox-capture > div,
+  .history-reschedule-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .fixed-schedule-list article > div,
+  .inbox-item > button,
+  .historical-item > button {
+    width: 100%;
+  }
+
+  .fixed-schedule-list article > div button {
+    flex: 1;
+  }
+}

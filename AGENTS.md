@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.2.0`，分支 `codex/1.2.0-historical-unfinished-reschedule`，从经验证的 `baseline/1.1.0` 提交 `f986d28` 继续。1.1 产品与隐私边界见 `docs/V1_1_PLANNING_PRIVACY.md`，历史未完成规则见 `docs/V1_2_HISTORICAL_TASKS.md`。
+当前迭代为 `1.3.0`，分支 `codex/1.3.0-fixed-schedule-journal-layout`，从经验证的 `baseline/1.2.0` 提交 `6a44b4b` 继续。历史未完成规则见 `docs/V1_2_HISTORICAL_TASKS.md`；1.3 增加每日固定安排、精简任务事件文案，并修复待办横向布局。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。
@@ -64,7 +64,7 @@
 ## Windows 未签名包约束
 
 - `bundle.publisher` 不是 Authenticode 签名，不能据此声称发行者可信。
-- 没有证书时，保留两份 NSIS，并额外生成 no-WebView2 MSI 供企业 IT 部署。
+- 按用户最新要求，日常发行只构建一份 no-WebView2 NSIS，不再构建内置 WebView2 版本或 MSI；需要离线运行时时再单独恢复对应构建。
 - 每次构建必须生成 `SHA256SUMS.txt` 与 `BUILD-INFO.txt`，记录真实签名状态。
 - 不得加入关闭 Defender、自动解除文件阻止或绕过公司安全策略的脚本。
 - 未签名产物只能称为“经 CI 校验的未签名构建”，不能保证 SmartScreen 放行。

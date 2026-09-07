@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { elapsedFocusSeconds, incompleteFirst, remainingSeconds, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
+import { elapsedFocusSeconds, incompleteFirst, remainingSeconds, schedulesByTime, validScheduleRange, type DailySchedule, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
 import { useWorklog } from './application/useWorklog'
 import { NAV_ITEMS, navigationAction, type NavItem } from './application/navigation'
 
@@ -78,6 +78,10 @@ function App() {
 
   function toggleTask(task: DayTask) {
     ignore(worklog.setTaskStatus(task.id, task.status === 'completed' ? 'not_started' : 'completed'))
+  }
+
+  function saveSchedule(scheduleId: string | null, title: string, plannedStart: string, plannedEnd: string) {
+    ignore(worklog.saveSchedule(scheduleId, title, plannedStart, plannedEnd))
   }
 
   function pauseFocus(event: FormEvent) {
@@ -164,6 +168,12 @@ function App() {
               })}</div>
             </article>
           })}</div>
+          <FixedSchedulePanel
+            schedules={schedulesByTime(day.schedules)}
+            busy={worklog.busy}
+            onSave={saveSchedule}
+            onCancel={(scheduleId) => ignore(worklog.cancelSchedule(scheduleId))}
+          />
         </section>
 
         <aside className="timeline-panel">
@@ -182,6 +192,51 @@ function App() {
       </form>
     </div>}
   </div>
+}
+
+function FixedSchedulePanel({ schedules, busy, onSave, onCancel }: {
+  schedules: DailySchedule[]
+  busy: boolean
+  onSave: (scheduleId: string | null, title: string, start: string, end: string) => void
+  onCancel: (scheduleId: string) => void
+}) {
+  const [editing, setEditing] = useState<DailySchedule | null | 'new'>(null)
+  return <section className="fixed-schedule-block" aria-labelledby="fixed-schedule-title">
+    <header>
+      <div><h3 id="fixed-schedule-title">固定安排</h3><p>会议、预约等必须在特定时段进行的事项</p></div>
+      <button type="button" disabled={busy} onClick={() => setEditing('new')}>＋ 新增安排</button>
+    </header>
+    {editing === 'new' && <ScheduleForm busy={busy} onSubmit={(title, start, end) => { onSave(null, title, start, end); setEditing(null) }} onCancel={() => setEditing(null)}/>}
+    <div className="fixed-schedule-list">
+      {!schedules.length && editing !== 'new' && <p className="fixed-schedule-empty">今天还没有固定安排。</p>}
+      {schedules.map((schedule) => editing !== 'new' && editing?.id === schedule.id
+        ? <ScheduleForm key={schedule.id} busy={busy} schedule={schedule} onSubmit={(title, start, end) => { onSave(schedule.id, title, start, end); setEditing(null) }} onCancel={() => setEditing(null)}/>
+        : <article key={schedule.id}>
+          <time>{schedule.plannedStart}<span>–</span>{schedule.plannedEnd}</time>
+          <strong>{schedule.title}</strong>
+          <div><button type="button" disabled={busy} onClick={() => setEditing(schedule)}>编辑</button><button type="button" className="danger" disabled={busy} onClick={() => onCancel(schedule.id)}>取消</button></div>
+        </article>)}
+    </div>
+  </section>
+}
+
+function ScheduleForm({ schedule, busy, onSubmit, onCancel }: {
+  schedule?: DailySchedule
+  busy: boolean
+  onSubmit: (title: string, start: string, end: string) => void
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState(schedule?.title ?? '')
+  const [start, setStart] = useState(schedule?.plannedStart ?? '14:00')
+  const [end, setEnd] = useState(schedule?.plannedEnd ?? '15:00')
+  const valid = Boolean(title.trim()) && validScheduleRange(start, end)
+  return <form className="fixed-schedule-form" onSubmit={(event) => { event.preventDefault(); if (valid) onSubmit(title.trim(), start, end) }}>
+    <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：部门例会" aria-label="固定安排内容"/>
+    <span className="time-range"><input type="time" required value={start} onChange={(event) => setStart(event.target.value)} aria-label="开始时间"/><b>–</b><input type="time" required value={end} onChange={(event) => setEnd(event.target.value)} aria-label="结束时间"/></span>
+    <button type="submit" disabled={busy || !valid}>保存</button>
+    <button type="button" className="cancel" disabled={busy} onClick={onCancel}>取消</button>
+    {title.trim() && !validScheduleRange(start, end) && <small>结束时间必须晚于开始时间。</small>}
+  </form>
 }
 
 interface TaskFormProps {

@@ -143,6 +143,8 @@ pub fn run() {
             commands::create_task,
             commands::update_task,
             commands::set_task_status,
+            commands::save_daily_schedule,
+            commands::cancel_daily_schedule,
             commands::add_work_entry,
             commands::start_focus,
             commands::pause_focus,

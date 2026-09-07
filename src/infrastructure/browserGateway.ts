@@ -1,5 +1,5 @@
-import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, type DayState, type DayTask, type TaskStatus } from '../domain/model'
-import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, validScheduleRange, type DailySchedule, type DayState, type DayTask, type TaskStatus } from '../domain/model'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
@@ -42,7 +42,7 @@ export class BrowserGateway implements WorklogGateway {
     return commit({
       ...day,
       tasks: day.tasks.map((item) => item.permanentTaskId === task.permanentTaskId ? { ...item, title } : item.id === input.instanceId ? updated : item).map((item) => item.id === input.instanceId ? updated : item),
-      timeline: [...day.timeline, timelineEvent('task.updated', `更新任务${task.displayCode}：${title}`, 'detail', input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间')],
+      timeline: [...day.timeline, timelineEvent('task.updated', `任务${task.displayCode}：变更为'${title}'`, 'detail', input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间')],
     })
   }
 
@@ -50,7 +50,29 @@ export class BrowserGateway implements WorklogGateway {
     const day = loadDay(workDate)
     const task = findTask(day, instanceId)
     const labels: Record<TaskStatus, string> = { not_started: '恢复', in_progress: '开始', waiting: '等待', blocked: '阻塞', completed: '完成', deferred: '延期', cancelled: '取消' }
-    return commit({ ...day, tasks: day.tasks.map((item) => item.id === instanceId ? { ...item, status } : item), timeline: [...day.timeline, timelineEvent(`task.${status}`, `${labels[status]}${task.displayCode}：${task.title}`)] })
+    return commit({ ...day, tasks: day.tasks.map((item) => item.id === instanceId ? { ...item, status } : item), timeline: [...day.timeline, timelineEvent(`task.${status}`, `${labels[status]}任务${task.displayCode}`)] })
+  }
+
+  async saveSchedule(input: SaveScheduleRequest) {
+    const day = loadDay(input.workDate)
+    const title = input.title.trim()
+    if (!title) throw new Error('固定安排内容不能为空')
+    if (!validScheduleRange(input.plannedStart, input.plannedEnd)) throw new Error('固定安排时间段无效')
+    const existing = input.scheduleId ? day.schedules.find((item) => item.id === input.scheduleId) : null
+    if (input.scheduleId && !existing) throw new Error('固定安排不存在或已取消')
+    const schedule: DailySchedule = existing
+      ? { ...existing, title, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd }
+      : { id: id(), title, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd, createdAt: new Date().toISOString() }
+    const schedules = existing ? day.schedules.map((item) => item.id === schedule.id ? schedule : item) : [...day.schedules, schedule]
+    const eventTitle = existing ? `修改固定安排：${input.plannedStart}–${input.plannedEnd} ${title}` : `新增固定安排：${input.plannedStart}–${input.plannedEnd} ${title}`
+    return commit({ ...day, schedules, timeline: [...day.timeline, timelineEvent(existing ? 'schedule.updated' : 'schedule.created', eventTitle, 'detail')] })
+  }
+
+  async cancelSchedule(workDate: string, scheduleId: string) {
+    const day = loadDay(workDate)
+    const schedule = day.schedules.find((item) => item.id === scheduleId)
+    if (!schedule) throw new Error('固定安排不存在或已取消')
+    return commit({ ...day, schedules: day.schedules.filter((item) => item.id !== scheduleId), timeline: [...day.timeline, timelineEvent('schedule.cancelled', `取消固定安排：${schedule.plannedStart}–${schedule.plannedEnd} ${schedule.title}`, 'detail')] })
   }
 
   async addWorkEntry(input: WorkEntryRequest) {
