@@ -73,11 +73,11 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
     }
 
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
-    let (task_id, display_code, previous_title): (String, String, String) = transaction.query_row(
-        "SELECT t.id,i.display_code,t.title FROM task_day_instances i
+    let (task_id, display_code): (String, String) = transaction.query_row(
+        "SELECT t.id,i.display_code FROM task_day_instances i
          JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2",
         params![input.instance_id, input.work_date],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     ).map_err(|_| "任务不存在或不在今天".to_string())?;
     let now = db::now_iso();
     transaction.execute(
@@ -92,14 +92,9 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
         (Some(start), Some(end)) => format!("安排时间：{start}–{end}"),
         _ => "未安排固定时间".to_string(),
     };
-    let detail = if previous_title == title {
-        schedule
-    } else {
-        format!("原内容：{previous_title}；{schedule}")
-    };
     db::append_event(
         &transaction, "task.updated", "task", &task_id, &input.work_date, "detail",
-        &format!("更新任务{display_code}：{title}"), Some(&detail), &db::new_id(),
+        &format!("任务{display_code}：变更为'{title}'"), Some(&schedule), &db::new_id(),
     )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -110,13 +105,66 @@ pub(crate) fn set_task_status_core(connection: &mut Connection, input: SetTaskSt
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
     let belongs:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM task_day_instances d WHERE d.id=?1 AND d.work_date=?2 AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=d.id))",params![input.instance_id,input.work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
     if !belongs{return Err("任务不属于所选日期，或安排已移除".into());}
-    let (task_id, display_code, title) = task_info(&transaction, &input.instance_id)?;
+    let (task_id, display_code, _title) = task_info(&transaction, &input.instance_id)?;
     let now = db::now_iso();
     let completed_at = if input.status == "completed" { Some(now.clone()) } else { None };
     transaction.execute("UPDATE tasks SET status=?1,completed_at_utc=?2,updated_at_utc=?3,row_version=row_version+1 WHERE id=?4", params![input.status, completed_at, now, task_id]).map_err(|error| error.to_string())?;
     transaction.execute("UPDATE task_day_instances SET day_status=?1,updated_at_utc=?2 WHERE id=?3", params![input.status, now, input.instance_id]).map_err(|error| error.to_string())?;
     let verb = match input.status.as_str() { "completed" => "完成", "not_started" => "恢复", "in_progress" => "开始", "waiting" => "等待", "blocked" => "阻塞", "deferred" => "延期", _ => "取消" };
-    db::append_event(&transaction, &format!("task.{}", input.status), "task", &task_id, &input.work_date, "summary", &format!("{verb}{display_code}：{title}"), None, &db::new_id())?;
+    db::append_event(&transaction, &format!("task.{}", input.status), "task", &task_id, &input.work_date, "summary", &format!("{verb}任务{display_code}"), None, &db::new_id())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    db::read_day(connection, &input.work_date)
+}
+
+pub(crate) fn save_daily_schedule_core(connection: &mut Connection, input: SaveDailyScheduleInput) -> Result<DayState, String> {
+    let title = input.title.trim();
+    if title.is_empty() { return Err("固定安排内容不能为空".into()); }
+    let start = db::minute_value(&Some(input.planned_start.clone()))?.ok_or("固定安排开始时间不能为空")?;
+    let end = db::minute_value(&Some(input.planned_end.clone()))?.ok_or("固定安排结束时间不能为空")?;
+    if start >= end { return Err("固定安排时间段无效".into()); }
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let now = db::now_iso();
+    let (schedule_id, event_type, event_title) = if let Some(schedule_id) = input.schedule_id {
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM daily_schedules WHERE id=?1 AND work_date=?2 AND status='active')",
+            params![schedule_id, input.work_date], |row| row.get(0),
+        ).map_err(|error| error.to_string())?;
+        if !exists { return Err("固定安排不存在或已取消".into()); }
+        transaction.execute(
+            "UPDATE daily_schedules SET title=?1,planned_start_minute=?2,planned_end_minute=?3,updated_at_utc=?4,row_version=row_version+1 WHERE id=?5",
+            params![title, start, end, now, schedule_id],
+        ).map_err(|error| error.to_string())?;
+        let event_title = format!("修改固定安排：{}–{} {}", input.planned_start, input.planned_end, title);
+        (schedule_id, "schedule.updated", event_title)
+    } else {
+        let schedule_id = db::new_id();
+        transaction.execute(
+            "INSERT INTO daily_schedules(id,work_date,title,planned_start_minute,planned_end_minute,status,created_at_utc,updated_at_utc) VALUES(?1,?2,?3,?4,?5,'active',?6,?6)",
+            params![schedule_id, input.work_date, title, start, end, now],
+        ).map_err(|error| error.to_string())?;
+        let event_title = format!("新增固定安排：{}–{} {}", input.planned_start, input.planned_end, title);
+        (schedule_id, "schedule.created", event_title)
+    };
+    db::append_event(&transaction, event_type, "daily_schedule", &schedule_id, &input.work_date, "detail", &event_title, None, &db::new_id())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    db::read_day(connection, &input.work_date)
+}
+
+pub(crate) fn cancel_daily_schedule_core(connection: &mut Connection, input: CancelDailyScheduleInput) -> Result<DayState, String> {
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let (title, start, end): (String, i64, i64) = transaction.query_row(
+        "SELECT title,planned_start_minute,planned_end_minute FROM daily_schedules WHERE id=?1 AND work_date=?2 AND status='active'",
+        params![input.schedule_id, input.work_date], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).map_err(|_| "固定安排不存在或已取消".to_string())?;
+    transaction.execute(
+        "UPDATE daily_schedules SET status='cancelled',updated_at_utc=?1,row_version=row_version+1 WHERE id=?2",
+        params![db::now_iso(), input.schedule_id],
+    ).map_err(|error| error.to_string())?;
+    let clock = |value: i64| format!("{:02}:{:02}", value / 60, value % 60);
+    db::append_event(
+        &transaction, "schedule.cancelled", "daily_schedule", &input.schedule_id, &input.work_date, "detail",
+        &format!("取消固定安排：{}–{} {}", clock(start), clock(end), title), None, &db::new_id(),
+    )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
 }
@@ -304,6 +352,10 @@ pub fn update_task(database: State<'_, Database>, input: UpdateTaskInput) -> Res
 #[tauri::command]
 pub fn set_task_status(database: State<'_, Database>, input: SetTaskStatusInput) -> Result<DayState, String> { with_database(database, |connection| set_task_status_core(connection, input)) }
 #[tauri::command]
+pub fn save_daily_schedule(database: State<'_, Database>, input: SaveDailyScheduleInput) -> Result<DayState, String> { with_database(database, |connection| save_daily_schedule_core(connection, input)) }
+#[tauri::command]
+pub fn cancel_daily_schedule(database: State<'_, Database>, input: CancelDailyScheduleInput) -> Result<DayState, String> { with_database(database, |connection| cancel_daily_schedule_core(connection, input)) }
+#[tauri::command]
 pub fn add_work_entry(database: State<'_, Database>, input: WorkEntryInput) -> Result<DayState, String> { with_database(database, |connection| add_work_entry_core(connection, input)) }
 #[tauri::command]
 pub fn start_focus(database: State<'_, Database>, input: StartFocusInput) -> Result<DayState, String> { with_database(database, |connection| start_focus_core(connection, input)) }
@@ -385,6 +437,46 @@ mod tests {
         assert_eq!(day.tasks[0].title, "进一步整理资料");
         assert_eq!(day.tasks[0].planned_start.as_deref(), Some("10:00"));
         assert_eq!(day.timeline.last().unwrap().event_type, "task.updated");
+        assert_eq!(day.timeline.last().unwrap().title, "任务#1：变更为'进一步整理资料'");
+    }
+
+    #[test]
+    fn task_status_events_only_repeat_the_daily_number() {
+        let mut connection = connection();
+        let task = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].clone();
+        let day = set_task_status_core(&mut connection, SetTaskStatusInput {
+            work_date: "2026-09-02".into(), instance_id: task.id, status: "completed".into(),
+        }).unwrap();
+        assert_eq!(day.timeline.last().unwrap().title, "完成任务#1");
+        assert!(!day.timeline.last().unwrap().title.contains("整理资料"));
+    }
+
+    #[test]
+    fn fixed_schedule_requires_time_and_is_soft_cancelled() {
+        let mut connection = connection();
+        let day = save_daily_schedule_core(&mut connection, SaveDailyScheduleInput {
+            work_date: "2026-09-02".into(), schedule_id: None, title: "部门例会".into(),
+            planned_start: "14:00".into(), planned_end: "15:00".into(),
+        }).unwrap();
+        assert_eq!(day.schedules.len(), 1);
+        assert_eq!(day.schedules[0].planned_start, "14:00");
+        let id = day.schedules[0].id.clone();
+        let day = cancel_daily_schedule_core(&mut connection, CancelDailyScheduleInput {
+            work_date: "2026-09-02".into(), schedule_id: id.clone(),
+        }).unwrap();
+        assert!(day.schedules.is_empty());
+        let status: String = connection.query_row("SELECT status FROM daily_schedules WHERE id=?1", [id], |row| row.get(0)).unwrap();
+        assert_eq!(status, "cancelled");
+    }
+
+    #[test]
+    fn fixed_schedule_rejects_reversed_time() {
+        let mut connection = connection();
+        let error = save_daily_schedule_core(&mut connection, SaveDailyScheduleInput {
+            work_date: "2026-09-02".into(), schedule_id: None, title: "部门例会".into(),
+            planned_start: "15:00".into(), planned_end: "14:00".into(),
+        }).unwrap_err();
+        assert!(error.contains("时间段无效"));
     }
 
     #[test]

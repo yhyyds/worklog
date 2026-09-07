@@ -18,6 +18,14 @@ export interface DayTask {
   createdAt: string
 }
 
+export interface DailySchedule {
+  id: string
+  title: string
+  plannedStart: string
+  plannedEnd: string
+  createdAt: string
+}
+
 export interface TimelineEvent {
   id: string
   type: string
@@ -53,6 +61,7 @@ export interface RestSession {
 export interface DayState {
   workDate: string
   tasks: DayTask[]
+  schedules: DailySchedule[]
   timeline: TimelineEvent[]
   focus: FocusSession | null
   rest: RestSession | null
@@ -65,7 +74,16 @@ export function localDate(): string {
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-')
 }
 
-export const emptyDay = (workDate = localDate()): DayState => ({ workDate, tasks: [], timeline: [], focus: null, rest: null })
+export const emptyDay = (workDate = localDate()): DayState => ({ workDate, tasks: [], schedules: [], timeline: [], focus: null, rest: null })
+
+export function validScheduleRange(start: string, end: string): boolean {
+  const pattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+  return pattern.test(start) && pattern.test(end) && start < end
+}
+
+export function schedulesByTime(schedules: DailySchedule[]): DailySchedule[] {
+  return [...schedules].sort((left, right) => left.plannedStart.localeCompare(right.plannedStart) || left.createdAt.localeCompare(right.createdAt))
+}
 
 export function nextDisplayCode(tasks: DayTask[], parentId: string | null): string {
   if (!parentId) {

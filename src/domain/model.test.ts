@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { incompleteFirst, nextDisplayCode, remainingSeconds, type DayTask, type FocusSession } from './model'
+import { incompleteFirst, nextDisplayCode, remainingSeconds, schedulesByTime, validScheduleRange, type DayTask, type FocusSession } from './model'
 
 const task = (id: string, displayCode: string, parentId: string | null = null): DayTask => ({
   id, permanentTaskId: `task-${id}`, parentId, displayCode, title: displayCode,
@@ -32,5 +32,21 @@ describe('任务视觉排序', () => {
     const pending = task('pending', '#2')
     const active = { ...task('active', '#3'), status: 'in_progress' as const }
     expect(incompleteFirst([completed, pending, active]).map((item) => item.id)).toEqual(['pending', 'active', 'done'])
+  })
+})
+
+describe('固定安排', () => {
+  it('要求有效且递增的时间段', () => {
+    expect(validScheduleRange('14:00', '15:30')).toBe(true)
+    expect(validScheduleRange('15:30', '14:00')).toBe(false)
+    expect(validScheduleRange('24:00', '25:00')).toBe(false)
+  })
+
+  it('按开始时间稳定排序', () => {
+    const items = [
+      { id: 'b', title: '复盘', plannedStart: '17:00', plannedEnd: '17:30', createdAt: '2026-09-07T01:00:00Z' },
+      { id: 'a', title: '会议', plannedStart: '14:00', plannedEnd: '15:00', createdAt: '2026-09-07T00:00:00Z' },
+    ]
+    expect(schedulesByTime(items).map((item) => item.id)).toEqual(['a', 'b'])
   })
 })

@@ -225,9 +225,17 @@ pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> Stri
 
     output.push_str("## 今日安排\n\n");
     let scheduled: Vec<_> = day.tasks.iter().filter(|task| task.planned_start.is_some() && task.planned_end.is_some()).collect();
-    if scheduled.is_empty() {
+    if scheduled.is_empty() && day.schedules.is_empty() {
         output.push_str("- 暂无固定时段\n");
     } else {
+        for item in &day.schedules {
+            output.push_str(&format!(
+                "- {}–{}：{}\n",
+                item.planned_start,
+                item.planned_end,
+                item.title
+            ));
+        }
         for task in scheduled {
             output.push_str(&format!(
                 "- {}–{}：{} {}\n",
@@ -555,7 +563,7 @@ pub fn get_daily_note_sync_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{DayTask, TimelineEvent};
+    use crate::model::{DailySchedule, DayTask, TimelineEvent};
 
     fn settings() -> ObsidianSettings {
         ObsidianSettings::default()
@@ -579,11 +587,16 @@ mod tests {
                     planned_start: None, planned_end: None, created_at: "2026-09-02T00:00:00Z".into(),
                 },
             ],
+            schedules: vec![DailySchedule {
+                id: "schedule-1".into(), title: "部门例会".into(),
+                planned_start: "14:00".into(), planned_end: "15:00".into(),
+                created_at: "2026-09-02T00:00:00Z".into(),
+            }],
             timeline: vec![
                 TimelineEvent {
                     id: "event-1".into(), event_type: "task.completed".into(),
                     occurred_at: "2026-09-02T10:43:00+08:00".into(),
-                    title: "完成#1：整理资料".into(), detail: None, visibility: "summary".into(),
+                    title: "完成任务#1".into(), detail: None, visibility: "summary".into(),
                 },
                 TimelineEvent {
                     id: "event-2".into(), event_type: "work_entry.created".into(),
@@ -665,10 +678,10 @@ mod tests {
         let started_at = "2026-09-02T02:40:00Z";
         let event_at = "2026-09-02T02:43:00Z";
         let ended_at = "2026-09-02T03:05:00Z";
-        let day = day_with_timeline(vec![event("event-1", event_at, "完成#1：整理资料")]);
+        let day = day_with_timeline(vec![event("event-1", event_at, "完成任务#1")]);
         let markdown = render_managed(&day, &[round(started_at, ended_at)]);
         let expected = format!(
-            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：完成#1：整理资料\n",
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：完成任务#1\n",
             local_clock(started_at), local_clock(ended_at), local_clock(event_at)
         );
         assert_eq!(records_section(&markdown), expected);
@@ -780,12 +793,13 @@ mod tests {
         assert!(markdown.contains("- [x] #1 整理资料"));
         assert!(markdown.contains("  - [ ] #1.1 制作 PPT"));
         assert!(markdown.contains("08:00–09:00：#1 整理资料"));
+        assert!(markdown.contains("14:00–15:00：部门例会"));
         let local_time = DateTime::parse_from_rfc3339("2026-09-02T10:43:00+08:00")
             .unwrap()
             .with_timezone(&Local)
             .format("%H:%M")
             .to_string();
-        assert!(markdown.contains(&format!("{local_time}：完成#1：整理资料")));
+        assert!(markdown.contains(&format!("{local_time}：完成任务#1")));
         assert!(!markdown.contains("临时草稿"));
     }
 }

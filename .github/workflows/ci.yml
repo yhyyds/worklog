@@ -46,10 +46,9 @@ jobs:
       - run: npm run bundle:windows
       - uses: actions/upload-artifact@v4
         with:
-          name: worklog-windows-installers-and-msi
+          name: worklog-windows-no-webview2-installer
           path: |
-            artifacts/windows/*-setup.exe
-            artifacts/windows/*.msi
+            artifacts/windows/*-no-webview2-setup.exe
             artifacts/windows/SHA256SUMS.txt
             artifacts/windows/BUILD-INFO.txt
           if-no-files-found: error

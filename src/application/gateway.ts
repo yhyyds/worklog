@@ -18,6 +18,14 @@ export interface UpdateTaskRequest {
   plannedEnd: string | null
 }
 
+export interface SaveScheduleRequest {
+  workDate: string
+  scheduleId: string | null
+  title: string
+  plannedStart: string
+  plannedEnd: string
+}
+
 export interface WorkEntryRequest {
   workDate: string
   content: string
@@ -75,6 +83,8 @@ export interface WorklogGateway {
   createTask(input: CreateTaskRequest): Promise<DayState>
   updateTask(input: UpdateTaskRequest): Promise<DayState>
   setTaskStatus(workDate: string, instanceId: string, status: TaskStatus): Promise<DayState>
+  saveSchedule(input: SaveScheduleRequest): Promise<DayState>
+  cancelSchedule(workDate: string, scheduleId: string): Promise<DayState>
   addWorkEntry(input: WorkEntryRequest): Promise<DayState>
   startFocus(workDate: string, taskId: string, plannedSeconds: number): Promise<DayState>
   pauseFocus(workDate: string, reason: string): Promise<DayState>

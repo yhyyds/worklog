@@ -1,12 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { DayState, TaskStatus } from '../domain/model'
-import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
+import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 
 export class DesktopGateway implements WorklogGateway {
   getDaySnapshot(workDate: string) { return invoke<DayState>('get_day_snapshot', { workDate }) }
   createTask(input: CreateTaskRequest) { return invoke<DayState>('create_task', { input }) }
   updateTask(input: UpdateTaskRequest) { return invoke<DayState>('update_task', { input }) }
   setTaskStatus(workDate: string, instanceId: string, status: TaskStatus) { return invoke<DayState>('set_task_status', { input: { workDate, instanceId, status } }) }
+  saveSchedule(input: SaveScheduleRequest) { return invoke<DayState>('save_daily_schedule', { input }) }
+  cancelSchedule(workDate: string, scheduleId: string) { return invoke<DayState>('cancel_daily_schedule', { input: { workDate, scheduleId } }) }
   addWorkEntry(input: WorkEntryRequest) { return invoke<DayState>('add_work_entry', { input }) }
   startFocus(workDate: string, taskId: string, plannedSeconds: number) { return invoke<DayState>('start_focus', { input: { workDate, taskId, plannedSeconds } }) }
   pauseFocus(workDate: string, reason: string) { return invoke<DayState>('pause_focus', { input: { workDate, reason } }) }

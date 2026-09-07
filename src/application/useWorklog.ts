@@ -55,6 +55,8 @@ export function useWorklog() {
     createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd })),
     updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),
+    saveSchedule: (scheduleId: string | null, title: string, plannedStart: string, plannedEnd: string) => run(() => gateway.saveSchedule({ workDate, scheduleId, title, plannedStart, plannedEnd })),
+    cancelSchedule: (scheduleId: string) => run(() => gateway.cancelSchedule(workDate, scheduleId)),
     addWorkEntry: (content: string, entryType: EntryType, reviewLevel: ReviewLevel, taskId: string | null) => run(() => gateway.addWorkEntry({ workDate, content, entryType, reviewLevel, taskId })),
     startFocus: (taskId: string, plannedSeconds?: number) => run(async () => {
       const seconds = plannedSeconds ?? (await gateway.getTimerSettings()).workMinutes * 60

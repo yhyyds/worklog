@@ -2,12 +2,13 @@
 
 本地优先的 Windows 工作记录桌面应用：四象限任务、事件时间线、番茄钟、工作想法与 Obsidian Markdown 汇总。
 
-## 当前里程碑：1.2 历史未完成与重新安排
+## 当前里程碑：1.3 每日固定安排与记录降噪
 
-当前迭代分支为 `codex/1.2.0-historical-unfinished-reschedule`，版本 `1.2.0`。在 1.1 分类规划与隐私分享基础上，新增历史未完成任务视图及安全重新安排；详细行为见 [1.2 说明](docs/V1_2_HISTORICAL_TASKS.md)。真实周期自动轮转与引语库扩充仍在待办中。按最新约定，保留自动化测试和编译检查，界面由用户试用反馈，不再每轮执行完整 demo。
+当前迭代分支为 `codex/1.3.0-fixed-schedule-journal-layout`，版本 `1.3.0`。在 1.2 历史任务重新安排基础上，新增四象限下方的每日固定安排、精简任务事件文案，并修复待办与历史弹窗横向裁切；详细行为见 [1.3 说明](docs/V1_3_DAILY_SCHEDULES.md)。
 
 - 待办箱：无日期收集、现有任务收纳和父子任务组重新排期，保留永久 ID 与原始记录。
 - 历史未完成：查看今天以前尚未处理且没有较新安排的任务，按父子组重新安排到今天或未来日期。
+- 每日固定安排：会议、预约等事项必须填写时间段，支持编辑和软取消，并进入 Obsidian 今日安排。
 
 - React + TypeScript + Vite 界面；“我的一天”始终作为主页面，随笔、Obsidian 与设置使用弹窗。
 - 父子任务均可修改内容与当天时间段；四象限支持独立滚动、快捷新增和完成项置底。
@@ -21,7 +22,7 @@
 - 日记根目录由用户在 Obsidian 工作区内指定，输出 `YYYY/YYYY-MM/YYYY-MM-DD.md`，只替换受管理区块。
 - 工作记录按回顾等级投影，隐藏草稿与机械事件，严格控制噪音。
 - 日终收尾只顺延未完成任务，次日重新编号且永久 ID 不变。
-- Windows NSIS 当前用户安装包，无需管理员权限；同时提供不内置 WebView2 的小体积版和内置 WebView2 离线运行时的完整离线版。
+- Windows NSIS 当前用户安装包，无需管理员权限；日常发行只提供不内置 WebView2 的小体积版，目标电脑需已有 WebView2 Runtime。
 - 中文/英文安装界面、正式应用图标和 SHA-256 下载校验文件。
 - Git 标签自动构建并发布 GitHub Release；PR 会实际构建安装包作为冒烟验证。
 - 主窗口关闭行为可在“直接退出”与“隐藏到托盘”之间切换，策略由桌面后端执行。
@@ -37,10 +38,8 @@
 从仓库的 [Releases](https://github.com/yhyyds/worklog/releases) 下载对应安装包和 `SHA256SUMS.txt`：
 
 - `*-no-webview2-setup.exe`：体积较小，适合已安装 WebView2 Runtime 的 Windows 10/11 电脑；安装包不会下载或安装 WebView2。
-- `*-with-webview2-setup.exe`：内置 WebView2 离线运行时，体积较大，适合离线电脑或无法确定运行时是否存在的环境。
-- `*-no-webview2.msi`：不内置 WebView2 的 Windows Installer 备用包，主要供公司 IT、软件中心或 MSI 白名单部署使用。
 
-校验后优先双击 NSIS 安装包。若公司电脑的 SmartScreen 阻止未知 EXE，可把 MSI 和 `SHA256SUMS.txt` 一并提交给 IT 部门审核部署。没有受信任代码签名时，任何格式都不能保证绕过组织安全策略。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
+校验后双击 NSIS 安装包。若公司电脑的 SmartScreen 阻止未知 EXE，请把安装包、`SHA256SUMS.txt` 和 `BUILD-INFO.txt` 一并提交给 IT 部门审核。没有受信任代码签名时不能保证组织安全策略放行；详细说明见 [Windows 未签名安装说明](docs/WINDOWS_UNSIGNED_INSTALL.md)。
 
 ## 本地开发
 
@@ -59,13 +58,13 @@ npm run check
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-一次构建两份 Windows 安装包并生成 SHA-256 清单：
+构建 no-WebView2 Windows 安装包并生成 SHA-256 清单：
 
 ```bash
 npm run bundle:windows
 ```
 
-产物保存在 `artifacts/windows/`，包含两份 NSIS、一个 no-WebView2 MSI、`SHA256SUMS.txt` 和 `BUILD-INFO.txt`。`BUILD-INFO.txt` 记录提交、文件大小、哈希与 Authenticode 状态，便于 IT 审核。
+产物保存在 `artifacts/windows/`，包含一份 no-WebView2 NSIS、`SHA256SUMS.txt` 和 `BUILD-INFO.txt`。`BUILD-INFO.txt` 记录提交、文件大小、哈希与 Authenticode 状态，便于 IT 审核。
 
 ## 数据原则
 

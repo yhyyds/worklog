@@ -1,4 +1,4 @@
-use crate::model::{DayState, DayTask, FocusSession, RestSession, TimelineEvent};
+use crate::model::{DailySchedule, DayState, DayTask, FocusSession, RestSession, TimelineEvent};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value};
@@ -29,6 +29,7 @@ pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0007_growth_system.sql"))?;
     connection.execute_batch(include_str!("../migrations/0008_task_inbox.sql"))?;
     connection.execute_batch(include_str!("../migrations/0009_planning_privacy.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0010_daily_schedules.sql"))?;
     Ok(())
 }
 
@@ -90,6 +91,19 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
     })).map_err(|error| error.to_string())?
       .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
 
+    let mut schedule_statement = connection.prepare(
+        "SELECT id,title,planned_start_minute,planned_end_minute,created_at_utc
+         FROM daily_schedules WHERE work_date=?1 AND status='active'
+         ORDER BY planned_start_minute,created_at_utc"
+    ).map_err(|error| error.to_string())?;
+    let schedules = schedule_statement.query_map([work_date], |row| Ok(DailySchedule {
+        id: row.get(0)?, title: row.get(1)?,
+        planned_start: minute_text(Some(row.get(2)?)).unwrap_or_default(),
+        planned_end: minute_text(Some(row.get(3)?)).unwrap_or_default(),
+        created_at: row.get(4)?,
+    })).map_err(|error| error.to_string())?
+      .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
+
     let mut event_statement = connection.prepare(
         "SELECT event_id,event_type,occurred_at_utc,default_visibility,payload_json FROM events WHERE work_date=?1 ORDER BY seq"
     ).map_err(|error| error.to_string())?;
@@ -144,7 +158,7 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
         }
     ).optional().map_err(|error| error.to_string())?;
 
-    Ok(DayState { work_date: work_date.to_string(), tasks, timeline, focus, rest })
+    Ok(DayState { work_date: work_date.to_string(), tasks, schedules, timeline, focus, rest })
 }
 
 #[cfg(test)]
@@ -167,9 +181,9 @@ mod migration_tests {
         let value: String = connection.query_row("SELECT value_json FROM app_settings WHERE key='sentinel'", [], |row| row.get(0)).unwrap();
         assert_eq!(value, "{\"kept\":true}");
         let new_tables: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('focus_session_modes','habits','long_term_goals','quote_usage')",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('focus_session_modes','habits','long_term_goals','quote_usage','daily_schedules')",
             [], |row| row.get(0),
         ).unwrap();
-        assert_eq!(new_tables, 4);
+        assert_eq!(new_tables, 5);
     }
 }
