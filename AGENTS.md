@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前本机迭代为 `1.1.0`，分支 `codex/1.1.0-private-category-planning`，承接原 1.0 工作区全部改动。仍以 `d9ed59b` / `7d2fdfc` 为来源，不引入远端 main。1.1 产品与隐私边界见 `docs/V1_1_PLANNING_PRIVACY.md`。
+当前迭代为 `1.2.0`，分支 `codex/1.2.0-historical-unfinished-reschedule`，从经验证的 `baseline/1.1.0` 提交 `f986d28` 继续。1.1 产品与隐私边界见 `docs/V1_1_PLANNING_PRIVACY.md`，历史未完成规则见 `docs/V1_2_HISTORICAL_TASKS.md`。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

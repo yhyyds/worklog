@@ -137,6 +137,8 @@ pub fn run() {
             inbox::create_inbox_task,
             inbox::move_task_to_inbox,
             inbox::schedule_inbox_task,
+            inbox::list_historical_unfinished,
+            inbox::reschedule_historical_task,
             commands::get_day_snapshot,
             commands::create_task,
             commands::update_task,
