@@ -4,6 +4,23 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha.ComputeHash($stream)
+            return ([BitConverter]::ToString($bytes)).Replace("-", "").ToLowerInvariant()
+        } finally {
+            $sha.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $targetBundleRoot = Join-Path $repoRoot "src-tauri\target\release\bundle"
 $cargoLock = Join-Path $repoRoot "src-tauri\Cargo.lock"
@@ -67,7 +84,7 @@ function Build-Installer {
     Get-Item -LiteralPath $destination
 }
 
-$lockHashBefore = (Get-FileHash -LiteralPath $cargoLock -Algorithm SHA256).Hash
+$lockHashBefore = Get-Sha256Hex -Path $cargoLock
 Push-Location $repoRoot
 try {
     $withoutWebViewNsis = Build-Installer -Variant "no-webview2" -Bundle "nsis" -ConfigPath "src-tauri/tauri.no-webview2.conf.json"
@@ -85,7 +102,7 @@ if ($withWebViewNsis.Length -le $withoutWebViewNsis.Length) {
 
 $packages = @($withoutWebViewNsis, $withWebViewNsis, $withoutWebViewMsi)
 $checksumLines = foreach ($installer in $packages) {
-    $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-Sha256Hex -Path $installer.FullName
     "$hash  $($installer.Name)"
 }
 $checksumPath = Join-Path $OutputDirectory "SHA256SUMS.txt"
@@ -119,7 +136,7 @@ foreach ($installer in $packages) {
     $buildInfo += "File: $($installer.Name)"
     $buildInfo += "Size: $($installer.Length)"
     $buildInfo += "SHA256: $hash"
-    $buildInfo += "AuthenticodeStatus: $($signature.Status)"
+    $buildInfo += "AuthenticodeStatus: $signatureStatus"
     $buildInfo += "Signer: $signer"
     $buildInfo += ""
 }
