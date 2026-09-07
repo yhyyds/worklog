@@ -60,3 +60,11 @@
 - 不提交 `node_modules`、`dist`、`src-tauri/target`、真实数据库、Vault 或个人路径。
 - 应提交依赖锁文件、迁移脚本、测试、发行脚本和交接文档。
 - 对用户汇报时使用中文，明确列出基线提交、测试结果、安装包类型及未完成项。
+
+## Windows 未签名包约束
+
+- `bundle.publisher` 不是 Authenticode 签名，不能据此声称发行者可信。
+- 没有证书时，保留两份 NSIS，并额外生成 no-WebView2 MSI 供企业 IT 部署。
+- 每次构建必须生成 `SHA256SUMS.txt` 与 `BUILD-INFO.txt`，记录真实签名状态。
+- 不得加入关闭 Defender、自动解除文件阻止或绕过公司安全策略的脚本。
+- 未签名产物只能称为“经 CI 校验的未签名构建”，不能保证 SmartScreen 放行。

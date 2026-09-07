@@ -51,13 +51,15 @@ jobs:
 
           - `no-webview2`：体积较小，不安装 WebView2；目标电脑必须已经具备 WebView2 Runtime。
           - `with-webview2`：内置 WebView2 离线安装程序，体积较大，可在无网络环境安装。
+          - `no-webview2.msi`：供公司 IT、软件中心或 MSI 白名单部署的备用包，目标电脑需已有 WebView2 Runtime。
+          - `BUILD-INFO.txt`：记录提交、文件大小、SHA-256 与 Authenticode 状态。
           - 所有业务数据保存在本地。
           - 请使用 `SHA256SUMS.txt` 校验下载文件。
 
-          当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示未知发布者提示。
+          当前安装包尚未配置受信任代码签名，Windows SmartScreen 或组织策略仍可能阻止运行。MSI 便于 IT 审核部署，但不是安全策略绕过手段。
           '@
           $notesPath = Join-Path $env:RUNNER_TEMP "worklog-release-notes.md"
           $notes | Set-Content -LiteralPath $notesPath -Encoding utf8
           $assets = @(Get-ChildItem -LiteralPath "artifacts/windows" -File | Select-Object -ExpandProperty FullName)
-          if ($assets.Count -ne 3) { throw "Expected two installers and one checksum file" }
+          if ($assets.Count -ne 5) { throw "Expected two NSIS installers, one MSI, checksum and build info" }
           gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath

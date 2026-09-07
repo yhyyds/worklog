@@ -37,8 +37,9 @@
 
 - `*-no-webview2-setup.exe`：体积较小，适合已安装 WebView2 Runtime 的 Windows 10/11 电脑；安装包不会下载或安装 WebView2。
 - `*-with-webview2-setup.exe`：内置 WebView2 离线运行时，体积较大，适合离线电脑或无法确定运行时是否存在的环境。
+- `*-no-webview2.msi`：不内置 WebView2 的 Windows Installer 备用包，主要供公司 IT、软件中心或 MSI 白名单部署使用。
 
-校验后双击安装。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
+校验后优先双击 NSIS 安装包。若公司电脑的 SmartScreen 阻止未知 EXE，可把 MSI 和 `SHA256SUMS.txt` 一并提交给 IT 部门审核部署。没有受信任代码签名时，任何格式都不能保证绕过组织安全策略。当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”；详细说明见 [M7 Windows 发行说明](docs/M7_WINDOWS_RELEASE.md)。
 
 ## 本地开发
 
@@ -63,7 +64,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 npm run bundle:windows
 ```
 
-产物保存在 `artifacts/windows/`，文件名明确包含 `no-webview2` 或 `with-webview2`。
+产物保存在 `artifacts/windows/`，包含两份 NSIS、一个 no-WebView2 MSI、`SHA256SUMS.txt` 和 `BUILD-INFO.txt`。`BUILD-INFO.txt` 记录提交、文件大小、哈希与 Authenticode 状态，便于 IT 审核。
 
 ## 数据原则
 
