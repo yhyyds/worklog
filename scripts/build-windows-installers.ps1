@@ -93,7 +93,7 @@ try {
 } finally {
     Pop-Location
 }
-$lockHashAfter = (Get-FileHash -LiteralPath $cargoLock -Algorithm SHA256).Hash
+$lockHashAfter = Get-Sha256Hex -Path $cargoLock
 
 if ($lockHashBefore -ne $lockHashAfter) { throw "Cargo.lock changed during the package build" }
 if ($withWebViewNsis.Length -le $withoutWebViewNsis.Length) {
@@ -110,7 +110,7 @@ $checksumPath = Join-Path $OutputDirectory "SHA256SUMS.txt"
 
 foreach ($installer in $packages) {
     $recorded = $checksumLines | Where-Object { $_ -like "*  $($installer.Name)" }
-    $actual = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256Hex -Path $installer.FullName
     if ($recorded -ne "$actual  $($installer.Name)") {
         throw "Checksum verification failed for $($installer.Name)"
     }
@@ -129,10 +129,17 @@ $buildInfo = @(
     "Use SHA256SUMS.txt for integrity checking and submit the MSI to IT for approved deployment."
     ""
 )
+$authenticodeCommand = Get-Command -Name Get-AuthenticodeSignature -ErrorAction SilentlyContinue
 foreach ($installer in $packages) {
-    $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-    $signer = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "None" }
-    $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($null -ne $authenticodeCommand) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+        $signatureStatus = [string]$signature.Status
+        $signer = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "None" }
+    } else {
+        $signatureStatus = "Unavailable"
+        $signer = "Unavailable"
+    }
+    $hash = Get-Sha256Hex -Path $installer.FullName
     $buildInfo += "File: $($installer.Name)"
     $buildInfo += "Size: $($installer.Length)"
     $buildInfo += "SHA256: $hash"
