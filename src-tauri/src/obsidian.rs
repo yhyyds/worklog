@@ -197,6 +197,34 @@ fn event_in_round(event_time: &str, round: &FocusRoundReview) -> bool {
     }
 }
 
+fn group_timeline_events<'a>(events: &[&'a crate::model::TimelineEvent]) -> Vec<Vec<&'a crate::model::TimelineEvent>> {
+    let mut groups: Vec<Vec<&'a crate::model::TimelineEvent>> = Vec::new();
+    for &event in events {
+        let should_append = groups.last()
+            .and_then(|group| group.last())
+            .and_then(|previous| {
+                let current = DateTime::parse_from_rfc3339(&event.occurred_at).ok()?;
+                let previous = DateTime::parse_from_rfc3339(&previous.occurred_at).ok()?;
+                let distance = current.signed_duration_since(previous).num_milliseconds();
+                Some((0..120_000).contains(&distance))
+            })
+            .unwrap_or(false);
+        if should_append {
+            groups.last_mut().expect("timeline group exists").push(event);
+        } else {
+            groups.push(vec![event]);
+        }
+    }
+    groups
+}
+
+fn grouped_event_titles(events: &[&crate::model::TimelineEvent]) -> String {
+    events.iter()
+        .map(|event| event.title.replace('\r', "").replace('\n', "；"))
+        .collect::<Vec<_>>()
+        .join("；")
+}
+
 pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> String {
     let quadrants = [
         ("重要 · 紧急", "important", "urgent"),
@@ -260,25 +288,25 @@ pub fn render_managed(day: &DayState, focus_rounds: &[FocusRoundReview]) -> Stri
                 local_clock(&round.started_at),
                 end
             ));
-            let events: Vec<_> = visible.iter().filter(|event| event_in_round(&event.occurred_at, round)).collect();
+            let events: Vec<_> = visible.iter().copied().filter(|event| event_in_round(&event.occurred_at, round)).collect();
             if events.is_empty() {
                 output.push_str("\t- 本轮暂无记录\n");
             } else {
-                for event in events {
-                    output.push_str(&format!("\t- {}：{}\n", local_clock(&event.occurred_at), event.title));
+                for group in group_timeline_events(&events) {
+                    output.push_str(&format!("\t- {}：{}\n", local_clock(&group[0].occurred_at), grouped_event_titles(&group)));
                 }
             }
         }
 
-        let outside: Vec<_> = visible.iter().filter(|event| {
+        let outside: Vec<_> = visible.iter().copied().filter(|event| {
             !focus_rounds.iter().any(|round| event_in_round(&event.occurred_at, round))
         }).collect();
         if !outside.is_empty() {
             if !focus_rounds.is_empty() {
                 output.push_str("\n### 非专注时段记录\n\n");
             }
-            for event in outside {
-                output.push_str(&format!("- {}：{}\n", local_clock(&event.occurred_at), event.title));
+            for group in group_timeline_events(&outside) {
+                output.push_str(&format!("- {}：{}\n", local_clock(&group[0].occurred_at), grouped_event_titles(&group)));
             }
         }
     }
@@ -719,6 +747,41 @@ mod tests {
         );
         assert_eq!(records_section(&markdown), expected);
         assert_native_markdown(&markdown);
+    }
+
+    #[test]
+    fn events_less_than_two_minutes_apart_share_one_time_node() {
+        let started_at = "2026-09-02T02:00:00Z";
+        let first_at = "2026-09-02T02:05:00Z";
+        let second_at = "2026-09-02T02:06:59Z";
+        let third_at = "2026-09-02T02:08:58Z";
+        let ended_at = "2026-09-02T02:25:00Z";
+        let day = day_with_timeline(vec![
+            event("first", first_at, "第一条"),
+            event("second", second_at, "第二条"),
+            event("third", third_at, "第三条"),
+        ]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：第一条；第二条；第三条\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(first_at),
+        );
+        assert_eq!(records_section(&markdown), expected);
+    }
+
+    #[test]
+    fn events_exactly_two_minutes_apart_keep_separate_time_nodes() {
+        let started_at = "2026-09-02T03:00:00Z";
+        let first_at = "2026-09-02T03:05:00Z";
+        let second_at = "2026-09-02T03:07:00Z";
+        let ended_at = "2026-09-02T03:25:00Z";
+        let day = day_with_timeline(vec![event("first", first_at, "第一条"), event("second", second_at, "第二条")]);
+        let markdown = render_managed(&day, &[round(started_at, ended_at)]);
+        let expected = format!(
+            "- 第1轮任务，专注时段：{}-{}，任务记录：\n\t- {}：第一条\n\t- {}：第二条\n",
+            local_clock(started_at), local_clock(ended_at), local_clock(first_at), local_clock(second_at),
+        );
+        assert_eq!(records_section(&markdown), expected);
     }
 
     #[test]

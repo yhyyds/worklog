@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.3.0`，分支 `codex/1.3.0-fixed-schedule-journal-layout`，从经验证的 `baseline/1.2.0` 提交 `6a44b4b` 继续。历史未完成规则见 `docs/V1_2_HISTORICAL_TASKS.md`；1.3 增加每日固定安排、精简任务事件文案，并修复待办横向布局。
+当前迭代为 `1.4.0`，分支 `codex/1.4.0-focus-timeline-task-edit`，从经验证的 `baseline/1.3.0` 提交 `8deaaab` 继续。1.4 规则见 `docs/V1_4_FOCUS_TIMELINE_TASK_EDIT.md`：新建表单可取消，想法跟随当前专注，时间线在读取层按两分钟归组，一级任务可调整象限。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

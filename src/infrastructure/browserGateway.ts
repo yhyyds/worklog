@@ -38,11 +38,18 @@ export class BrowserGateway implements WorklogGateway {
     const title = input.title.trim()
     if (!title) throw new Error('任务内容不能为空')
     if ((input.plannedStart === null) !== (input.plannedEnd === null)) throw new Error('任务时间段无效')
-    const updated = { ...task, title, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd }
+    if ((input.importance === null) !== (input.urgency === null)) throw new Error('任务分类必须同时设置重要性和紧急性')
+    if (task.parentId && input.importance !== null) throw new Error('只能修改一级任务的重要性和紧急性')
+    const classification = input.importance && input.urgency ? { importance: input.importance, urgency: input.urgency } : null
     return commit({
       ...day,
-      tasks: day.tasks.map((item) => item.permanentTaskId === task.permanentTaskId ? { ...item, title } : item.id === input.instanceId ? updated : item).map((item) => item.id === input.instanceId ? updated : item),
-      timeline: [...day.timeline, timelineEvent('task.updated', `任务${task.displayCode}：变更为'${title}'`, 'detail', input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间')],
+      tasks: day.tasks.map((item) => {
+        let updated = item.permanentTaskId === task.permanentTaskId ? { ...item, title } : item
+        if (item.id === input.instanceId) updated = { ...updated, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd }
+        if (classification && (item.id === input.instanceId || item.parentId === input.instanceId)) updated = { ...updated, ...classification }
+        return updated
+      }),
+      timeline: [...day.timeline, timelineEvent('task.updated', `任务${task.displayCode}：变更为'${title}'`, 'detail', [input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间', classification ? `分类：${classification.importance === 'important' ? '重要' : '次要'} · ${classification.urgency === 'urgent' ? '紧急' : '稍缓'}` : null].filter(Boolean).join('；'))],
     })
   }
 
