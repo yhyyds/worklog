@@ -2,11 +2,16 @@ name: Windows Release
 
 on:
   push:
+    branches:
+      - 'baseline/1.4.0'
     tags:
       - 'v*.*.*'
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.4.0' }}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -17,6 +22,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create release tag from the stable baseline
+        if: github.ref_type == 'branch'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag $env:RELEASE_TAG $env:GITHUB_SHA
+          git push origin "refs/tags/$env:RELEASE_TAG"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -30,7 +45,7 @@ jobs:
         run: npm ci
 
       - name: Verify release version
-        run: npm run check:version -- "${{ github.ref_name }}"
+        run: npm run check:version -- "$env:RELEASE_TAG"
 
       - name: Run frontend checks
         run: npm run check
@@ -60,14 +75,14 @@ jobs:
           $notes | Set-Content -LiteralPath $notesPath -Encoding utf8
           $assets = @(Get-ChildItem -LiteralPath "artifacts/windows" -File | Select-Object -ExpandProperty FullName)
           if ($assets.Count -ne 3) { throw "Expected one NSIS installer, checksum and build info" }
-          gh release view $env:GITHUB_REF_NAME *> $null
+          gh release view $env:RELEASE_TAG *> $null
           $releaseExists = $LASTEXITCODE -eq 0
           if ($releaseExists) {
-            gh release edit $env:GITHUB_REF_NAME --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
+            gh release edit $env:RELEASE_TAG --title "Worklog $env:RELEASE_TAG" --notes-file $notesPath
             if ($LASTEXITCODE -ne 0) { throw "Failed to update existing GitHub Release" }
-            gh release upload $env:GITHUB_REF_NAME $assets --clobber
+            gh release upload $env:RELEASE_TAG $assets --clobber
             if ($LASTEXITCODE -ne 0) { throw "Failed to upload GitHub Release assets" }
           } else {
-            gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
+            gh release create $env:RELEASE_TAG $assets --verify-tag --title "Worklog $env:RELEASE_TAG" --notes-file $notesPath
             if ($LASTEXITCODE -ne 0) { throw "Failed to create GitHub Release" }
           }
