@@ -41,7 +41,7 @@ jobs:
       - name: Build Windows installer
         run: npm run bundle:windows
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,4 +60,14 @@ jobs:
           $notes | Set-Content -LiteralPath $notesPath -Encoding utf8
           $assets = @(Get-ChildItem -LiteralPath "artifacts/windows" -File | Select-Object -ExpandProperty FullName)
           if ($assets.Count -ne 3) { throw "Expected one NSIS installer, checksum and build info" }
-          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
+          gh release view $env:GITHUB_REF_NAME *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          if ($releaseExists) {
+            gh release edit $env:GITHUB_REF_NAME --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update existing GitHub Release" }
+            gh release upload $env:GITHUB_REF_NAME $assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload GitHub Release assets" }
+          } else {
+            gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Worklog $env:GITHUB_REF_NAME" --notes-file $notesPath
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create GitHub Release" }
+          }
