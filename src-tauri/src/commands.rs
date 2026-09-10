@@ -71,14 +71,26 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
     if start.is_some() != end.is_some() || start.zip(end).is_some_and(|(a, b)| a >= b) {
         return Err("任务时间段无效".into());
     }
+    let classification = match (&input.importance, &input.urgency) {
+        (Some(importance), Some(urgency)) => {
+            validate_choice(importance, &["important", "secondary"], "重要性")?;
+            validate_choice(urgency, &["urgent", "relaxed"], "紧急性")?;
+            Some((importance.as_str(), urgency.as_str()))
+        }
+        (None, None) => None,
+        _ => return Err("任务分类必须同时设置重要性和紧急性".into()),
+    };
 
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
-    let (task_id, display_code): (String, String) = transaction.query_row(
-        "SELECT t.id,i.display_code FROM task_day_instances i
+    let (task_id, display_code, parent_instance_id): (String, String, Option<String>) = transaction.query_row(
+        "SELECT t.id,i.display_code,i.parent_instance_id FROM task_day_instances i
          JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2",
         params![input.instance_id, input.work_date],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ).map_err(|_| "任务不存在或不在今天".to_string())?;
+    if parent_instance_id.is_some() && classification.is_some() {
+        return Err("只能修改一级任务的重要性和紧急性".into());
+    }
     let now = db::now_iso();
     transaction.execute(
         "UPDATE tasks SET title=?1,updated_at_utc=?2,row_version=row_version+1 WHERE id=?3",
@@ -88,13 +100,26 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
         "UPDATE task_day_instances SET planned_start_minute=?1,planned_end_minute=?2,updated_at_utc=?3 WHERE id=?4",
         params![start, end, now, input.instance_id],
     ).map_err(|error| error.to_string())?;
+    if let Some((importance, urgency)) = classification {
+        transaction.execute(
+            "UPDATE task_day_instances SET importance=?1,urgency=?2,updated_at_utc=?3
+             WHERE id=?4 OR parent_instance_id=?4",
+            params![importance, urgency, now, input.instance_id],
+        ).map_err(|error| error.to_string())?;
+    }
     let schedule = match (&input.planned_start, &input.planned_end) {
         (Some(start), Some(end)) => format!("安排时间：{start}–{end}"),
         _ => "未安排固定时间".to_string(),
     };
+    let classification_detail = classification.map(|(importance, urgency)| format!(
+        "分类：{} · {}",
+        if importance == "important" { "重要" } else { "次要" },
+        if urgency == "urgent" { "紧急" } else { "稍缓" },
+    ));
+    let detail = classification_detail.map(|value| format!("{schedule}；{value}")).unwrap_or(schedule);
     db::append_event(
         &transaction, "task.updated", "task", &task_id, &input.work_date, "detail",
-        &format!("任务{display_code}：变更为'{title}'"), Some(&schedule), &db::new_id(),
+        &format!("任务{display_code}：变更为'{title}'"), Some(&detail), &db::new_id(),
     )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -427,17 +452,34 @@ mod tests {
     fn tasks_can_be_edited_after_creation() {
         let mut connection = connection();
         let task = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].clone();
+        create_task_core(&mut connection, task_input("制作目录", Some(task.id.clone()))).unwrap();
         let day = update_task_core(&mut connection, UpdateTaskInput {
             work_date: "2026-09-02".into(),
             instance_id: task.id,
             title: "进一步整理资料".into(),
             planned_start: Some("10:00".into()),
             planned_end: Some("11:00".into()),
+            importance: Some("secondary".into()),
+            urgency: Some("relaxed".into()),
         }).unwrap();
         assert_eq!(day.tasks[0].title, "进一步整理资料");
         assert_eq!(day.tasks[0].planned_start.as_deref(), Some("10:00"));
         assert_eq!(day.timeline.last().unwrap().event_type, "task.updated");
         assert_eq!(day.timeline.last().unwrap().title, "任务#1：变更为'进一步整理资料'");
+        assert!(day.tasks.iter().all(|item| item.importance == "secondary" && item.urgency == "relaxed"));
+    }
+
+    #[test]
+    fn child_task_priority_cannot_be_edited_directly() {
+        let mut connection = connection();
+        let parent = create_task_core(&mut connection, task_input("整理资料", None)).unwrap().tasks[0].id.clone();
+        let child = create_task_core(&mut connection, task_input("制作目录", Some(parent))).unwrap().tasks[1].id.clone();
+        let error = update_task_core(&mut connection, UpdateTaskInput {
+            work_date: "2026-09-02".into(), instance_id: child, title: "新目录".into(),
+            planned_start: None, planned_end: None,
+            importance: Some("secondary".into()), urgency: Some("relaxed".into()),
+        }).unwrap_err();
+        assert!(error.contains("只能修改一级任务"));
     }
 
     #[test]

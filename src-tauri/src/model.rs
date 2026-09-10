@@ -113,6 +113,8 @@ pub struct UpdateTaskInput {
     pub title: String,
     pub planned_start: Option<String>,
     pub planned_end: Option<String>,
+    pub importance: Option<String>,
+    pub urgency: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

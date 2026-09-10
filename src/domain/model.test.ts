@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { incompleteFirst, nextDisplayCode, remainingSeconds, schedulesByTime, validScheduleRange, type DayTask, type FocusSession } from './model'
+import { groupTimelineEvents, incompleteFirst, nextDisplayCode, remainingSeconds, resolveWorkEntryTask, schedulesByTime, validScheduleRange, type DayTask, type FocusSession, type TimelineEvent } from './model'
 
 const task = (id: string, displayCode: string, parentId: string | null = null): DayTask => ({
   id, permanentTaskId: `task-${id}`, parentId, displayCode, title: displayCode,
@@ -48,5 +48,30 @@ describe('固定安排', () => {
       { id: 'a', title: '会议', plannedStart: '14:00', plannedEnd: '15:00', createdAt: '2026-09-07T00:00:00Z' },
     ]
     expect(schedulesByTime(items).map((item) => item.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('时间线降噪', () => {
+  const event = (id: string, seconds: number): TimelineEvent => ({
+    id, type: 'test', occurredAt: new Date(Date.UTC(2026, 8, 10, 8, 0, seconds)).toISOString(),
+    title: id, detail: null, visibility: 'summary',
+  })
+
+  it('相邻记录间隔不到两分钟时沿用同一时间节点', () => {
+    const groups = groupTimelineEvents([event('a', 0), event('b', 119), event('c', 238)])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].events.map((item) => item.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('相邻记录恰好两分钟时建立新节点', () => {
+    expect(groupTimelineEvents([event('a', 0), event('b', 120)])).toHaveLength(2)
+  })
+})
+
+describe('想法关联任务', () => {
+  it('专注切换后优先使用当前专注任务而非旧选择', () => {
+    const first = task('first', '#1')
+    const second = task('second', '#2')
+    expect(resolveWorkEntryTask([first, second], second.id, first.id)?.id).toBe(second.id)
   })
 })

@@ -16,6 +16,8 @@ export interface UpdateTaskRequest {
   title: string
   plannedStart: string | null
   plannedEnd: string | null
+  importance: Importance | null
+  urgency: Urgency | null
 }
 
 export interface SaveScheduleRequest {

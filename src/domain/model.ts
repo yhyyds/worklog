@@ -35,6 +35,12 @@ export interface TimelineEvent {
   visibility: 'summary' | 'detail' | 'hidden'
 }
 
+export interface TimelineGroup {
+  id: string
+  occurredAt: string
+  events: TimelineEvent[]
+}
+
 export interface FocusSession {
   id: string
   taskId: string
@@ -83,6 +89,30 @@ export function validScheduleRange(start: string, end: string): boolean {
 
 export function schedulesByTime(schedules: DailySchedule[]): DailySchedule[] {
   return [...schedules].sort((left, right) => left.plannedStart.localeCompare(right.plannedStart) || left.createdAt.localeCompare(right.createdAt))
+}
+
+export function groupTimelineEvents(events: TimelineEvent[], thresholdSeconds = 120): TimelineGroup[] {
+  const groups: TimelineGroup[] = []
+  for (const event of events) {
+    const previousGroup = groups.at(-1)
+    const previousEvent = previousGroup?.events.at(-1)
+    const currentTime = Date.parse(event.occurredAt)
+    const previousTime = previousEvent ? Date.parse(previousEvent.occurredAt) : Number.NaN
+    const distance = currentTime - previousTime
+    if (previousGroup && Number.isFinite(distance) && distance >= 0 && distance < thresholdSeconds * 1000) {
+      previousGroup.events.push(event)
+    } else {
+      groups.push({ id: event.id, occurredAt: event.occurredAt, events: [event] })
+    }
+  }
+  return groups
+}
+
+export function resolveWorkEntryTask(tasks: DayTask[], focusTaskId: string | null, selectedTaskId: string | null): DayTask | null {
+  return tasks.find((task) => task.id === focusTaskId)
+    ?? tasks.find((task) => !task.parentId && task.id === selectedTaskId)
+    ?? tasks.find((task) => !task.parentId && task.status !== 'completed')
+    ?? null
 }
 
 export function nextDisplayCode(tasks: DayTask[], parentId: string | null): string {
