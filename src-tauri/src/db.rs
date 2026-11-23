@@ -31,6 +31,7 @@ pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0009_planning_privacy.sql"))?;
     connection.execute_batch(include_str!("../migrations/0010_daily_schedules.sql"))?;
     connection.execute_batch(include_str!("../migrations/0011_long_term_work.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0012_long_term_transfers.sql"))?;
     Ok(())
 }
 
@@ -81,7 +82,7 @@ pub fn append_event(
 
 pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, String> {
     let mut task_statement = connection.prepare(
-        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc,w.workload FROM task_day_instances i JOIN tasks t ON t.id=i.task_id LEFT JOIN task_workloads w ON w.task_id=t.id AND i.parent_instance_id IS NOT NULL WHERE i.work_date=?1 AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id) ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
+        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc,w.workload FROM task_day_instances i JOIN tasks t ON t.id=i.task_id LEFT JOIN task_workloads w ON w.task_id=t.id AND i.parent_instance_id IS NOT NULL WHERE i.work_date=?1 AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=i.task_id) ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
     ).map_err(|error| error.to_string())?;
     let tasks = task_statement.query_map([work_date], |row| Ok(DayTask {
         id: row.get(0)?, permanent_task_id: row.get(1)?, parent_id: row.get(2)?,
@@ -123,8 +124,11 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
     let focus = connection.query_row(
         "SELECT f.id,f.primary_task_instance_id,f.status,f.planned_seconds,f.remaining_seconds,
                 f.target_end_at_utc,f.started_at_utc,COALESCE(m.timer_mode,'countdown'),
-                COALESCE(m.accumulated_seconds,0),m.running_started_at_utc
+                COALESCE(m.accumulated_seconds,0),m.running_started_at_utc,l.id,l.title
          FROM focus_sessions f LEFT JOIN focus_session_modes m ON m.focus_session_id=f.id
+         LEFT JOIN task_day_instances d ON d.id=f.primary_task_instance_id
+         LEFT JOIN long_term_focus_targets lf ON lf.task_id=d.task_id
+         LEFT JOIN long_term_work l ON l.id=lf.item_id
          WHERE f.active_guard=1 AND f.work_date=?1 LIMIT 1",
         [work_date], |row| {
             let status: String = row.get(2)?;
@@ -139,6 +143,7 @@ pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, St
                 planned_seconds: row.get(3)?, remaining_seconds: remaining_from_target(&status, stored, &target),
                 target_end_at: target, started_at: row.get(6)?, timer_mode, elapsed_seconds,
                 running_started_at: running_started,
+                long_term_id: row.get(10)?, long_term_title: row.get(11)?,
             })
         }
     ).optional().map_err(|error| error.to_string())?;

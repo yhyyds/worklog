@@ -15,6 +15,20 @@ export interface LongTermItem {
 }
 
 export type SaveLongTermItem = Omit<LongTermItem, 'id'> & { id: string | null }
+export const LONG_TERM_FOCUS_PREFIX = 'long-term:'
+
+export interface MoveToLongTerm {
+  workDate: string
+  instanceId: string
+  parentId: string | null
+  title: string
+  workload: Workload | null
+}
+
+export function workloadChange(before: Workload | null | undefined, after: Workload | null | undefined): string {
+  if ((before ?? null) === (after ?? null)) return ''
+  return `，工作量：${before ? WORKLOAD_LABELS[before] : '未估算'} → ${after ? WORKLOAD_LABELS[after] : '未估算'}`
+}
 
 export function validateWorkload(isChild: boolean, workload: Workload | null | undefined) {
   if (workload == null) return

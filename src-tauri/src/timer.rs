@@ -199,10 +199,12 @@ pub fn show_notices(app: &AppHandle, notices: &[Notice]) {
 pub fn advance_expired(connection: &mut Connection) -> Result<Option<Vec<Notice>>, String> {
     let now = db::now_iso();
     let focus: Option<(String, String)> = connection.query_row(
-        "SELECT fs.work_date,i.display_code || ' ' || t.title
+        "SELECT fs.work_date,CASE WHEN l.id IS NULL THEN i.display_code || ' ' || t.title ELSE '长期 ' || l.title END
          FROM focus_sessions fs
          JOIN task_day_instances i ON i.id=fs.primary_task_instance_id
          JOIN tasks t ON t.id=i.task_id
+         LEFT JOIN long_term_focus_targets lf ON lf.task_id=t.id
+         LEFT JOIN long_term_work l ON l.id=lf.item_id
          WHERE fs.active_guard=1 AND fs.status='running' AND fs.target_end_at_utc<=?1 LIMIT 1",
         [&now], |row| Ok((row.get(0)?, row.get(1)?)),
     ).optional().map_err(|error| error.to_string())?;

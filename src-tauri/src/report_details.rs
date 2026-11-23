@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 // Same plan membership and leaf-task definition for summary and drill-down.
-pub const PLAN_FILTER: &str = "d.day_status<>'cancelled' AND (d.day_status='completed' OR NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=d.id)) AND NOT EXISTS(SELECT 1 FROM task_day_instances child WHERE child.parent_instance_id=d.id AND child.day_status<>'cancelled' AND (child.day_status='completed' OR NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=child.id)))";
+pub const PLAN_FILTER: &str = "NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=d.task_id) AND d.day_status<>'cancelled' AND (d.day_status='completed' OR NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=d.id)) AND NOT EXISTS(SELECT 1 FROM task_day_instances child WHERE child.parent_instance_id=d.id AND child.day_status<>'cancelled' AND (child.day_status='completed' OR NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=child.id)))";
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]

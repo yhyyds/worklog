@@ -61,6 +61,8 @@ fn list_historical_core(connection: &Connection, before_date: &str) -> Result<Ve
            AND i.day_status IN ('not_started','in_progress','waiting','blocked')
            AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id)
            AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id)
+           AND NOT EXISTS(SELECT 1 FROM long_term_transfers m WHERE m.task_id=i.task_id)
+           AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=i.task_id)
            AND NOT EXISTS(
              SELECT 1 FROM task_day_instances newer
              WHERE newer.task_id=i.task_id AND newer.work_date>i.work_date
@@ -131,7 +133,7 @@ fn reschedule_historical_core(
     }
 
     let mut next_top: i64 = transaction.query_row(
-        "SELECT COALESCE(MAX(top_level_no),0) FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL",
+        "SELECT COALESCE(MAX(top_level_no),0) FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL AND display_code LIKE '#%'",
         [target_date], |row| row.get(0),
     ).map_err(|error| error.to_string())?;
     let mut destinations: HashMap<String, (String, String, i64)> = HashMap::new();
@@ -241,7 +243,7 @@ fn schedule_core(connection: &mut Connection, group_id: &str, work_date: &str) -
                 let child: i64 = tx.query_row("SELECT COALESCE(MAX(child_no),0)+1 FROM task_day_instances WHERE parent_instance_id=?1",[&parent],|r|r.get(0)).map_err(|e|e.to_string())?;
                 (Some(parent),root_top,Some(child),format!("#{root_top}.{child}"))
             } else {
-                root_top = tx.query_row("SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1",[work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
+                root_top = tx.query_row("SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1 AND display_code LIKE '#%'",[work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
                 (None,root_top,None,format!("#{root_top}"))
             };
             tx.execute("UPDATE task_day_instances SET parent_instance_id=?1,top_level_no=?2,child_no=?3,display_code=?4,sort_order=?5,planned_start_minute=NULL,planned_end_minute=NULL,updated_at_utc=?6 WHERE id=?7",params![parent,top,child,code,top*1000+child.unwrap_or(0),now,id]).map_err(|e|e.to_string())?;
@@ -253,7 +255,7 @@ fn schedule_core(connection: &mut Connection, group_id: &str, work_date: &str) -
                 let child: i64 = tx.query_row("SELECT COALESCE(MAX(child_no),0)+1 FROM task_day_instances WHERE parent_instance_id=?1",[&parent],|r|r.get(0)).map_err(|e|e.to_string())?;
                 (Some(parent),root_top,Some(child),format!("#{root_top}.{child}"))
             } else {
-                root_top = tx.query_row("SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1",[work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
+                root_top = tx.query_row("SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1 AND display_code LIKE '#%'",[work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
                 (None,root_top,None,format!("#{root_top}"))
             };
             let status: String = tx.query_row("SELECT status FROM tasks WHERE id=?1",[&item.task_id],|r|r.get(0)).map_err(|e|e.to_string())?;

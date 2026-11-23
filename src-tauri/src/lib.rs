@@ -128,6 +128,7 @@ pub fn run() {
             healthcheck,
             long_term::list_long_term_work,
             long_term::save_long_term_work,
+            long_term::move_task_to_long_term,
             categories::get_growth_catalog,
             categories::save_growth_category,
             categories::assign_growth_category,

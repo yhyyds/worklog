@@ -1,5 +1,5 @@
 import type { DayState, EntryType, Importance, ReviewLevel, TaskStatus, Urgency } from '../domain/model'
-import type { LongTermItem, SaveLongTermItem, Workload } from '../domain/longTerm'
+import type { LongTermItem, MoveToLongTerm, SaveLongTermItem, Workload } from '../domain/longTerm'
 
 export interface CreateTaskRequest {
   workDate: string
@@ -86,6 +86,7 @@ export interface TimerSettings {
 export interface WorklogGateway {
   listLongTermWork(): Promise<LongTermItem[]>
   saveLongTermWork(input: SaveLongTermItem): Promise<LongTermItem[]>
+  moveTaskToLongTerm(input: MoveToLongTerm): Promise<DayState>
   getDaySnapshot(workDate: string): Promise<DayState>
   createTask(input: CreateTaskRequest): Promise<DayState>
   updateTask(input: UpdateTaskRequest): Promise<DayState>

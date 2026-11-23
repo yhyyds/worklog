@@ -1,4 +1,4 @@
-use crate::{db, long_term::validate_workload, model::*, Database};
+use crate::{db, long_term::{focus_instance, validate_workload, workload_change, workload_label}, model::*, Database};
 use chrono::{Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use tauri::{AppHandle, Emitter, State};
@@ -9,7 +9,10 @@ fn validate_choice(value: &str, allowed: &[&str], field: &str) -> Result<(), Str
 
 fn task_info(transaction: &Transaction<'_>, instance_id: &str) -> Result<(String, String, String), String> {
     transaction.query_row(
-        "SELECT t.id,i.display_code,t.title FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.id=?1",
+        "SELECT t.id,CASE WHEN l.id IS NULL THEN i.display_code ELSE '长期' END,COALESCE(l.title,t.title)
+         FROM task_day_instances i JOIN tasks t ON t.id=i.task_id
+         LEFT JOIN long_term_focus_targets lf ON lf.task_id=t.id LEFT JOIN long_term_work l ON l.id=lf.item_id
+         WHERE i.id=?1",
         [instance_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ).map_err(|_| "任务不存在或不在今天".to_string())
 }
@@ -38,7 +41,7 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
     let (parent_task_id, top_level_no, child_no, display_code, importance, urgency) = if let Some(parent_id) = &input.parent_id {
         let parent = transaction.query_row(
-            "SELECT t.id,i.top_level_no,i.display_code,i.importance,i.urgency,i.parent_instance_id FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2",
+            "SELECT t.id,i.top_level_no,i.display_code,i.importance,i.urgency,i.parent_instance_id FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2 AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=t.id)",
             params![parent_id, input.work_date],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, Option<String>>(5)?)),
         ).map_err(|_| "父任务不存在或不在同一天".to_string())?;
@@ -50,7 +53,7 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
         (Some(parent.0), parent.1, Some(next_child), format!("{}.{}", parent.2, next_child), parent.3, parent.4)
     } else {
         let next_top: i64 = transaction.query_row(
-            "SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL",
+            "SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL AND display_code LIKE '#%'",
             [&input.work_date], |row| row.get(0),
         ).map_err(|error| error.to_string())?;
         (None, next_top, None, format!("#{next_top}"), input.importance.clone(), input.urgency.clone())
@@ -69,7 +72,8 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
         params![instance_id, task_id, input.work_date, input.parent_id, display_code, top_level_no, child_no, importance, urgency, start, end, top_level_no * 1000 + child_no.unwrap_or(0), now],
     ).map_err(|error| error.to_string())?;
     if input.workload.is_some() { save_workload(&transaction, &task_id, input.workload.as_deref())?; }
-    db::append_event(&transaction, "task.created", "task", &task_id, &input.work_date, "summary", &format!("新增任务{display_code}：{title}"), None, &transaction_id)?;
+    let workload_text = input.workload.as_deref().map(|value| format!("，工作量：{}", workload_label(Some(value)))).unwrap_or_default();
+    db::append_event(&transaction, "task.created", "task", &task_id, &input.work_date, "summary", &format!("新增任务{display_code}：{title}{workload_text}"), None, &transaction_id)?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
 }
@@ -93,11 +97,12 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
     };
 
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
-    let (task_id, display_code, parent_instance_id): (String, String, Option<String>) = transaction.query_row(
-        "SELECT t.id,i.display_code,i.parent_instance_id FROM task_day_instances i
-         JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2",
+    let (task_id, display_code, parent_instance_id, old_title, old_workload): (String, String, Option<String>, String, Option<String>) = transaction.query_row(
+        "SELECT t.id,i.display_code,i.parent_instance_id,t.title,w.workload FROM task_day_instances i
+         JOIN tasks t ON t.id=i.task_id LEFT JOIN task_workloads w ON w.task_id=t.id AND i.parent_instance_id IS NOT NULL
+         WHERE i.id=?1 AND i.work_date=?2 AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=t.id)",
         params![input.instance_id, input.work_date],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
     ).map_err(|_| "任务不存在或不在今天".to_string())?;
     if parent_instance_id.is_some() && classification.is_some() {
         return Err("只能修改一级任务的重要性和紧急性".into());
@@ -130,9 +135,15 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
         if urgency == "urgent" { "紧急" } else { "稍缓" },
     ));
     let detail = classification_detail.map(|value| format!("{schedule}；{value}")).unwrap_or(schedule);
+    let change = workload_change(old_workload.as_deref(), input.workload.as_deref());
+    let event_title = if old_title == title && !change.is_empty() {
+        format!("任务{display_code}{change}")
+    } else {
+        format!("任务{display_code}：变更为'{title}'{change}")
+    };
     db::append_event(
         &transaction, "task.updated", "task", &task_id, &input.work_date, "detail",
-        &format!("任务{display_code}：变更为'{title}'"), Some(&detail), &db::new_id(),
+        &event_title, Some(&detail), &db::new_id(),
     )?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -141,7 +152,7 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
 pub(crate) fn set_task_status_core(connection: &mut Connection, input: SetTaskStatusInput) -> Result<DayState, String> {
     validate_choice(&input.status, &["not_started", "in_progress", "waiting", "blocked", "completed", "deferred", "cancelled"], "任务状态")?;
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
-    let belongs:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM task_day_instances d WHERE d.id=?1 AND d.work_date=?2 AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=d.id))",params![input.instance_id,input.work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
+    let belongs:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM task_day_instances d WHERE d.id=?1 AND d.work_date=?2 AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=d.id) AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=d.id) AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=d.task_id))",params![input.instance_id,input.work_date],|r|r.get(0)).map_err(|e|e.to_string())?;
     if !belongs{return Err("任务不属于所选日期，或安排已移除".into());}
     let (task_id, display_code, _title) = task_info(&transaction, &input.instance_id)?;
     let now = db::now_iso();
@@ -221,7 +232,11 @@ pub(crate) fn add_work_entry_core(connection: &mut Connection, input: WorkEntryI
         "INSERT INTO work_entries(id,work_date,focus_session_id,task_instance_id,entry_type,review_level,content_md,occurred_at_utc,created_at_utc) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8)",
         params![entry_id, input.work_date, active_focus, input.task_id, input.entry_type, input.review_level, content, now],
     ).map_err(|error| error.to_string())?;
-    let title = task.as_ref().map(|(_, code, _)| format!("{code} · {content}")).unwrap_or_else(|| content.to_string());
+    let title = task.as_ref().map(|(_, code, title)| if code == "长期" {
+        format!("长期 · {title}：{content}")
+    } else {
+        format!("{code} · {content}")
+    }).unwrap_or_else(|| content.to_string());
     let visibility = match input.review_level.as_str() { "key" => "summary", "scratch" => "hidden", _ => "detail" };
     let detail = format!("{} · {}", input.entry_type, input.review_level);
     db::append_event(&transaction, "work_entry.created", "work_entry", &entry_id, &input.work_date, visibility, &title, Some(&detail), &db::new_id())?;
@@ -236,12 +251,13 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     if active > 0 { return Err("已有正在进行的专注".into()); }
     let active_rest: i64 = transaction.query_row("SELECT COUNT(*) FROM rest_sessions WHERE active_guard=1", [], |row| row.get(0)).map_err(|error| error.to_string())?;
     if active_rest > 0 { return Err("请先完成或跳过当前休息".into()); }
+    let instance_id = focus_instance(&transaction, &input.task_id, &input.work_date)?;
     let parent_instance_id: Option<String> = transaction.query_row(
-        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2",
-        params![input.task_id, input.work_date], |row| row.get(0),
+        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2 AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=task_day_instances.id)",
+        params![instance_id, input.work_date], |row| row.get(0),
     ).map_err(|_| "任务不存在或不在今天".to_string())?;
     if parent_instance_id.is_some() { return Err("专注事项只能选择一级任务".into()); }
-    let (task_id, display_code, title) = task_info(&transaction, &input.task_id)?;
+    let (task_id, display_code, title) = task_info(&transaction, &instance_id)?;
     let session_id = db::new_id();
     let segment_id = db::new_id();
     let now = db::now_iso();
@@ -254,14 +270,14 @@ pub(crate) fn start_focus_core(connection: &mut Connection, input: StartFocusInp
     };
     transaction.execute(
         "INSERT INTO focus_sessions(id,work_date,status,primary_task_instance_id,planned_seconds,remaining_seconds,target_end_at_utc,started_at_utc,active_guard) VALUES(?1,?2,'running',?3,?4,?4,?5,?6,1)",
-        params![session_id, input.work_date, input.task_id, input.planned_seconds, target, now],
+        params![session_id, input.work_date, instance_id, input.planned_seconds, target, now],
     ).map_err(|error| error.to_string())?;
     transaction.execute(
         "INSERT INTO focus_session_modes(focus_session_id,timer_mode,accumulated_seconds,running_started_at_utc) VALUES(?1,?2,0,?3)",
         params![session_id, timer_mode, if timer_mode == "count_up" { Some(now.clone()) } else { None }],
     ).map_err(|error| error.to_string())?;
-    transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![segment_id, session_id, input.task_id, now]).map_err(|error| error.to_string())?;
-    transaction.execute("UPDATE task_day_instances SET day_status='in_progress',updated_at_utc=?1 WHERE id=?2 AND day_status='not_started'", params![now, input.task_id]).map_err(|error| error.to_string())?;
+    transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![segment_id, session_id, instance_id, now]).map_err(|error| error.to_string())?;
+    transaction.execute("UPDATE task_day_instances SET day_status='in_progress',updated_at_utc=?1 WHERE id=?2 AND day_status='not_started'", params![now, instance_id]).map_err(|error| error.to_string())?;
     transaction.execute("UPDATE tasks SET status='in_progress',updated_at_utc=?1,row_version=row_version+1 WHERE id=?2 AND status='not_started'", params![now, task_id]).map_err(|error| error.to_string())?;
     db::append_event(&transaction, "focus.started", "focus", &session_id, &input.work_date, "summary", &format!("开始一轮工作，任务内容：{display_code} {title}"), None, &db::new_id())?;
     transaction.commit().map_err(|error| error.to_string())?;
@@ -326,18 +342,19 @@ pub(crate) fn switch_focus_core(connection: &mut Connection, input: SwitchFocusI
         "SELECT id,primary_task_instance_id FROM focus_sessions WHERE active_guard=1 AND work_date=?1", [&input.work_date],
         |row| Ok((row.get(0)?, row.get(1)?)),
     ).map_err(|_| "当前没有进行中的专注".to_string())?;
-    if old_instance == input.task_id { return db::read_day(&transaction, &input.work_date); }
+    let instance_id = focus_instance(&transaction, &input.task_id, &input.work_date)?;
+    if old_instance == instance_id { return db::read_day(&transaction, &input.work_date); }
     let (_, old_code, old_title) = task_info(&transaction, &old_instance)?;
     let new_parent: Option<String> = transaction.query_row(
-        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2",
-        params![input.task_id, input.work_date], |row| row.get(0),
+        "SELECT parent_instance_id FROM task_day_instances WHERE id=?1 AND work_date=?2 AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=task_day_instances.id)",
+        params![instance_id, input.work_date], |row| row.get(0),
     ).map_err(|_| "任务不存在或不在今天".to_string())?;
     if new_parent.is_some() { return Err("专注事项只能选择一级任务".into()); }
-    let (_, new_code, new_title) = task_info(&transaction, &input.task_id)?;
+    let (_, new_code, new_title) = task_info(&transaction, &instance_id)?;
     let now = db::now_iso();
     transaction.execute("UPDATE focus_segments SET ended_at_utc=?1 WHERE focus_session_id=?2 AND ended_at_utc IS NULL", params![now, session_id]).map_err(|error| error.to_string())?;
-    transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![db::new_id(), session_id, input.task_id, now]).map_err(|error| error.to_string())?;
-    transaction.execute("UPDATE focus_sessions SET primary_task_instance_id=?1 WHERE id=?2", params![input.task_id, session_id]).map_err(|error| error.to_string())?;
+    transaction.execute("INSERT INTO focus_segments(id,focus_session_id,task_instance_id,started_at_utc) VALUES(?1,?2,?3,?4)", params![db::new_id(), session_id, instance_id, now]).map_err(|error| error.to_string())?;
+    transaction.execute("UPDATE focus_sessions SET primary_task_instance_id=?1 WHERE id=?2", params![instance_id, session_id]).map_err(|error| error.to_string())?;
     db::append_event(&transaction, "focus.task_switched", "focus", &session_id, &input.work_date, "summary", &format!("本轮工作由{old_code} {old_title}切换至{new_code} {new_title}"), None, &db::new_id())?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -458,11 +475,20 @@ mod tests {
         assert_eq!(day.timeline.len(), 2);
         assert_eq!(day.tasks[0].workload, None);
         assert_eq!(day.tasks[1].workload.as_deref(), Some("light"));
-        let day = update_task_core(&mut connection, UpdateTaskInput {
+        assert_eq!(day.timeline[1].title, "新增任务#1.1：子任务，工作量：轻松（<1 h）");
+        let input = UpdateTaskInput {
             work_date: day.work_date.clone(), instance_id: day.tasks[1].id.clone(), title: "子任务".into(),
-            planned_start: None, planned_end: None, importance: None, urgency: None, workload: None,
-        }).unwrap();
+            planned_start: None, planned_end: None, importance: None, urgency: None, workload: Some("large".into()),
+        };
+        let day = update_task_core(&mut connection, input.clone()).unwrap();
+        assert_eq!(day.timeline.last().unwrap().title, "任务#1.1，工作量：轻松（<1 h） → 较大（1–2 h）");
+        let unchanged = update_task_core(&mut connection, input.clone()).unwrap();
+        assert!(!unchanged.timeline.last().unwrap().title.contains("工作量"));
+        let day = update_task_core(&mut connection, UpdateTaskInput { workload: None, ..input }).unwrap();
         assert_eq!(day.tasks[1].workload, None);
+        assert_eq!(day.timeline.last().unwrap().title, "任务#1.1，工作量：较大（1–2 h） → 未估算");
+        let diary = crate::obsidian::render_managed(&day, &[]);
+        assert!(diary.contains("工作量：轻松（<1 h） → 较大（1–2 h）"));
     }
 
     #[test]

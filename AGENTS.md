@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.5.0`，分支 `codex/1.5.0-long-term-work`，从经验证的 `baseline/1.4.0` 提交 `ef4d970` 继续。长期任务板独立保存，主任务默认折叠，子任务才允许填写三档预估工作量。
+当前迭代为 `1.5.1`，分支 `codex/1.5.1-move-long-term-work`，从经验证的 `baseline/1.5.0` 提交 `b0fd67a` 继续。普通任务编辑可移入长期板；今日子任务的工作量纳入不可变时间轴。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

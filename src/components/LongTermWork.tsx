@@ -13,7 +13,7 @@ export function WorkloadSelect({ value, onChange }: { value: Workload | null; on
   </label>
 }
 
-export default function LongTermWork() {
+export default function LongTermWork({ onItemsChange }: { onItemsChange: (items: LongTermItem[]) => void }) {
   const gateway = useMemo(createGateway, [])
   const [items, setItems] = useState<LongTermItem[]>([])
   const groups = useMemo(() => groupLongTermItems(items), [items])
@@ -42,8 +42,14 @@ export default function LongTermWork() {
     }
     void reload()
     window.addEventListener('worklog:storage-changed', reload)
-    return () => { active = false; window.removeEventListener('worklog:storage-changed', reload) }
+    window.addEventListener('worklog:long-term-changed', reload)
+    return () => {
+      active = false
+      window.removeEventListener('worklog:storage-changed', reload)
+      window.removeEventListener('worklog:long-term-changed', reload)
+    }
   }, [gateway])
+  useEffect(() => { onItemsChange(items) }, [items, onItemsChange])
 
   function start(parentId: string | null) {
     setEdit({ id: null, parentId, title: '', workload: null, completed: false })
