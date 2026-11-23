@@ -55,6 +55,8 @@ export interface FocusSession {
   timerMode: 'countdown' | 'count_up'
   elapsedSeconds: number
   runningStartedAt: string | null
+  longTermId?: string | null
+  longTermTitle?: string | null
 }
 
 export interface RestSession {

@@ -151,7 +151,7 @@ pub(crate) fn save_core(c: &mut Connection, input: SavePlan) -> Result<Vec<LongT
         let instance = db::new_id();
         let top: i64 = tx
             .query_row(
-                "SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1",
+                "SELECT COALESCE(MAX(top_level_no),0)+1 FROM task_day_instances WHERE work_date=?1 AND display_code LIKE '#%'",
                 [date],
                 |r| r.get(0),
             )

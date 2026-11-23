@@ -55,6 +55,7 @@ export function useWorklog() {
     day, workDate, workMinutes, timerMode, busy, error, clearError: () => setError(null),
     createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null, workload: Workload | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd, workload })),
     updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null, importance: Importance | null, urgency: Urgency | null, workload: Workload | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd, importance, urgency, workload })),
+    moveTaskToLongTerm: (instanceId: string, parentId: string | null, title: string, workload: Workload | null) => run(() => gateway.moveTaskToLongTerm({ workDate, instanceId, parentId, title, workload })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),
     saveSchedule: (scheduleId: string | null, title: string, plannedStart: string, plannedEnd: string) => run(() => gateway.saveSchedule({ workDate, scheduleId, title, plannedStart, plannedEnd })),
     cancelSchedule: (scheduleId: string) => run(() => gateway.cancelSchedule(workDate, scheduleId)),

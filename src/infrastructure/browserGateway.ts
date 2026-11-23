@@ -1,9 +1,8 @@
 import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, validScheduleRange, type DailySchedule, type DayState, type DayTask, type TaskStatus } from '../domain/model'
 import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
-import { loadDay, saveDay } from './dayStorage'
-import { saveLongTermItem, validateWorkload, type LongTermItem, type SaveLongTermItem } from '../domain/longTerm'
-
-const longTermKey = 'worklog.longTermWork.v1'
+import { loadDay, loadStoredDay, saveDay } from './dayStorage'
+import { LONG_TERM_FOCUS_PREFIX, saveLongTermItem, validateWorkload, workloadChange, WORKLOAD_LABELS, type LongTermItem, type MoveToLongTerm, type SaveLongTermItem } from '../domain/longTerm'
+import { loadLongTermStorage, saveLongTermStorage } from './longTermStorage'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
 const nextDate = (workDate: string) => {
@@ -19,16 +18,59 @@ const findTask = (day: DayState, taskId: string) => {
   return task
 }
 
+function focusTarget(day: DayState, taskId: string, allowCompleted = false) {
+  if (taskId.startsWith(LONG_TERM_FOCUS_PREFIX)) {
+    const itemId = taskId.slice(LONG_TERM_FOCUS_PREFIX.length)
+    const item = loadLongTermStorage().items.find((entry) => entry.id === itemId && entry.parentId === null)
+    if (!item || (item.completed && !allowCompleted)) throw new Error('请选择未完成的长期主任务')
+    return { label: `长期 ${item.title}`, longTermId: item.id, longTermTitle: item.title }
+  }
+  const task = findTask(day, taskId)
+  if (task.parentId) throw new Error('专注事项只能选择一级任务')
+  return { label: `${task.displayCode} ${task.title}`, longTermId: null, longTermTitle: null }
+}
+
 export class BrowserGateway implements WorklogGateway {
   async listLongTermWork(): Promise<LongTermItem[]> {
-    return JSON.parse(localStorage.getItem(longTermKey) ?? '[]') as LongTermItem[]
+    return loadLongTermStorage().items
   }
 
   async saveLongTermWork(input: SaveLongTermItem) {
-    const items = JSON.parse(localStorage.getItem(longTermKey) ?? '[]') as LongTermItem[]
-    const next = saveLongTermItem(items, input, id)
-    localStorage.setItem(longTermKey, JSON.stringify(next))
+    const storage = loadLongTermStorage()
+    const next = saveLongTermItem(storage.items, input, id)
+    saveLongTermStorage({ ...storage, items: next })
     return next
+  }
+
+  async moveTaskToLongTerm(input: MoveToLongTerm) {
+    const day = loadDay(input.workDate)
+    const source = findTask(day, input.instanceId)
+    const children = day.tasks.filter((task) => task.parentId === source.id)
+    if (source.parentId && !input.parentId) throw new Error('请为子任务选择一个长期主任务')
+    if (children.length && input.parentId) throw new Error('有子任务的主任务只能整体移为长期主任务')
+    if (day.focus?.taskId === source.id) throw new Error('请先结束该任务的进行中专注')
+    const storage = loadLongTermStorage()
+    const moved = [source, ...children]
+    const ids = new Set(moved.map((task) => task.permanentTaskId))
+    const hasFuture = Object.keys(localStorage).filter((key) => key.startsWith('worklog.day.'))
+      .map((key) => key.slice('worklog.day.'.length))
+      .some((date) => date > input.workDate && loadStoredDay(date).tasks.some((task) => ids.has(task.permanentTaskId)))
+    if (hasFuture) throw new Error('请先处理该任务的未来日程')
+    let items = storage.items
+    for (const task of moved) {
+      const first = task.id === source.id
+      items = saveLongTermItem(items, {
+        id: null,
+        parentId: first ? input.parentId : source.permanentTaskId,
+        title: first ? input.title : task.title,
+        workload: (first ? input.workload : task.workload) ?? null,
+        completed: task.status === 'completed',
+      }, () => task.permanentTaskId)
+    }
+    const change = workloadChange(source.workload, input.workload)
+    const event = timelineEvent('task.moved_to_long_term', `任务${source.displayCode}移入长期工作：${input.title.trim()}${change}`)
+    saveLongTermStorage({ items, transfers: [...storage.transfers, { workDate: input.workDate, taskIds: [...ids], event }] })
+    return loadDay(input.workDate)
   }
 
   async getDaySnapshot(workDate: string) { return structuredClone(loadDay(workDate)) }
@@ -37,14 +79,15 @@ export class BrowserGateway implements WorklogGateway {
     const day = loadDay(input.workDate)
     const parent = input.parentId ? findTask(day, input.parentId) : null
     validateWorkload(parent !== null, input.workload)
-    const displayCode = nextDisplayCode(day.tasks, input.parentId)
+    const displayCode = nextDisplayCode(loadStoredDay(input.workDate).tasks, input.parentId)
     const task: DayTask = {
       id: id(), permanentTaskId: id(), parentId: input.parentId, displayCode, title: input.title,
       status: 'not_started', importance: parent?.importance ?? input.importance,
       urgency: parent?.urgency ?? input.urgency, plannedStart: input.plannedStart,
       plannedEnd: input.plannedEnd, createdAt: new Date().toISOString(), workload: input.workload ?? null,
     }
-    return commit({ ...day, tasks: [...day.tasks, task], timeline: [...day.timeline, timelineEvent('task.created', `新增任务${displayCode}：${input.title}`)] })
+    const estimate = input.workload ? `，工作量：${WORKLOAD_LABELS[input.workload]}` : ''
+    return commit({ ...day, tasks: [...day.tasks, task], timeline: [...day.timeline, timelineEvent('task.created', `新增任务${displayCode}：${input.title}${estimate}`)] })
   }
 
   async updateTask(input: UpdateTaskRequest) {
@@ -57,6 +100,8 @@ export class BrowserGateway implements WorklogGateway {
     if ((input.importance === null) !== (input.urgency === null)) throw new Error('任务分类必须同时设置重要性和紧急性')
     if (task.parentId && input.importance !== null) throw new Error('只能修改一级任务的重要性和紧急性')
     const classification = input.importance && input.urgency ? { importance: input.importance, urgency: input.urgency } : null
+    const change = workloadChange(task.workload, input.workload)
+    const eventTitle = title === task.title && change ? `任务${task.displayCode}${change}` : `任务${task.displayCode}：变更为'${title}'${change}`
     return commit({
       ...day,
       tasks: day.tasks.map((item) => {
@@ -65,7 +110,7 @@ export class BrowserGateway implements WorklogGateway {
         if (classification && (item.id === input.instanceId || item.parentId === input.instanceId)) updated = { ...updated, ...classification }
         return updated
       }),
-      timeline: [...day.timeline, timelineEvent('task.updated', `任务${task.displayCode}：变更为'${title}'`, 'detail', [input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间', classification ? `分类：${classification.importance === 'important' ? '重要' : '次要'} · ${classification.urgency === 'urgent' ? '紧急' : '稍缓'}` : null].filter(Boolean).join('；'))],
+      timeline: [...day.timeline, timelineEvent('task.updated', eventTitle, 'detail', [input.plannedStart ? `安排时间：${input.plannedStart}–${input.plannedEnd}` : '未安排固定时间', classification ? `分类：${classification.importance === 'important' ? '重要' : '次要'} · ${classification.urgency === 'urgent' ? '紧急' : '稍缓'}` : null].filter(Boolean).join('；'))],
     })
   }
 
@@ -100,9 +145,10 @@ export class BrowserGateway implements WorklogGateway {
 
   async addWorkEntry(input: WorkEntryRequest) {
     const day = loadDay(input.workDate)
-    const task = input.taskId ? findTask(day, input.taskId) : null
+    const longTermTitle = input.taskId?.startsWith(LONG_TERM_FOCUS_PREFIX) ? focusTarget(day, input.taskId, true).longTermTitle : null
+    const task = input.taskId && !longTermTitle ? findTask(day, input.taskId) : null
     const visibility = input.reviewLevel === 'scratch' ? 'hidden' : input.reviewLevel === 'key' ? 'summary' : 'detail'
-    const title = `${task ? `${task.displayCode} · ` : ''}${input.content}`
+    const title = `${longTermTitle ? `长期 · ${longTermTitle}：` : task ? `${task.displayCode} · ` : ''}${input.content}`
     return commit({ ...day, timeline: [...day.timeline, timelineEvent('work_entry.created', title, visibility, `${input.entryType} · ${input.reviewLevel}`)] })
   }
 
@@ -110,11 +156,10 @@ export class BrowserGateway implements WorklogGateway {
     const day = loadDay(workDate)
     if (day.focus) throw new Error('已有正在进行的专注')
     if (day.rest) throw new Error('请先完成或跳过当前休息')
-    const task = findTask(day, taskId)
-    if (task.parentId) throw new Error('专注事项只能选择一级任务')
+    const { label, longTermId, longTermTitle } = focusTarget(day, taskId)
     const now = Date.now()
     const timerMode = (await this.getTimerSettings()).timerMode
-    return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: timerMode === 'countdown' ? new Date(now + plannedSeconds * 1000).toISOString() : null, startedAt: new Date(now).toISOString(), timerMode: timerMode === 'countUp' ? 'count_up' : 'countdown', elapsedSeconds: 0, runningStartedAt: timerMode === 'countUp' ? new Date(now).toISOString() : null }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${task.displayCode} ${task.title}`)] })
+    return commit({ ...day, tasks: day.tasks.map((item) => item.id === taskId && item.status === 'not_started' ? { ...item, status: 'in_progress' } : item), focus: { id: id(), taskId, longTermId, longTermTitle, status: 'running', plannedSeconds, remainingSeconds: plannedSeconds, targetEndAt: timerMode === 'countdown' ? new Date(now + plannedSeconds * 1000).toISOString() : null, startedAt: new Date(now).toISOString(), timerMode: timerMode === 'countUp' ? 'count_up' : 'countdown', elapsedSeconds: 0, runningStartedAt: timerMode === 'countUp' ? new Date(now).toISOString() : null }, timeline: [...day.timeline, timelineEvent('focus.started', `开始一轮工作，任务内容：${label}`)] })
   }
 
   async pauseFocus(workDate: string, reason: string) {
@@ -136,10 +181,10 @@ export class BrowserGateway implements WorklogGateway {
   async switchFocus(workDate: string, taskId: string) {
     const day = loadDay(workDate)
     if (!day.focus) throw new Error('当前没有进行中的专注')
-    const oldTask = findTask(day, day.focus.taskId)
-    const task = findTask(day, taskId)
-    if (task.parentId) throw new Error('专注事项只能选择一级任务')
-    return commit({ ...day, focus: { ...day.focus, taskId }, timeline: [...day.timeline, timelineEvent('focus.task_switched', `本轮工作由${oldTask.displayCode} ${oldTask.title}切换至${task.displayCode} ${task.title}`)] })
+    if (day.focus.taskId === taskId) return day
+    const old = focusTarget(day, day.focus.taskId, true)
+    const { label, longTermId, longTermTitle } = focusTarget(day, taskId)
+    return commit({ ...day, focus: { ...day.focus, taskId, longTermId, longTermTitle }, timeline: [...day.timeline, timelineEvent('focus.task_switched', `本轮工作由${old.label}切换至${label}`)] })
   }
 
   async completeFocus(workDate: string, reason: 'elapsed' | 'early_complete' | 'abandoned') {
@@ -220,17 +265,19 @@ export class BrowserGateway implements WorklogGateway {
 
     const next = loadDay(input.nextWorkDate)
     const carriedTasks = [...next.tasks]
+    const numberedTasks = [...loadStoredDay(input.nextWorkDate).tasks]
     const destination = new Map<string, string>()
     for (const task of source.tasks.filter((item) => selected.has(item.id))) {
       if (carriedTasks.some((item) => item.permanentTaskId === task.permanentTaskId)) throw new Error(`次日已经包含任务${task.displayCode}`)
       const parentId = task.parentId ? destination.get(task.parentId) ?? null : null
-      const displayCode = nextDisplayCode(carriedTasks, parentId)
+      const displayCode = nextDisplayCode(numberedTasks, parentId)
       const status: TaskStatus = task.status === 'waiting' || task.status === 'blocked' ? task.status : 'not_started'
       const carried: DayTask = {
         ...task, id: id(), parentId, displayCode, status,
         plannedStart: null, plannedEnd: null, createdAt: new Date().toISOString(), workload: parentId ? task.workload : null,
       }
       carriedTasks.push(carried)
+      numberedTasks.push(carried)
       destination.set(task.id, carried.id)
     }
     const completed = source.tasks.filter((task) => task.status === 'completed').length

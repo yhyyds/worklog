@@ -131,7 +131,7 @@ fn close_day_core(connection: &mut Connection, input: CloseDayInput) -> Result<C
 
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
     let mut next_top: i64 = transaction.query_row(
-        "SELECT COALESCE(MAX(top_level_no),0) FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL",
+        "SELECT COALESCE(MAX(top_level_no),0) FROM task_day_instances WHERE work_date=?1 AND parent_instance_id IS NULL AND display_code LIKE '#%'",
         [&input.next_work_date],
         |row| row.get(0),
     ).map_err(|error| error.to_string())?;
