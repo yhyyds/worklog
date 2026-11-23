@@ -255,7 +255,7 @@ mod tests {
         commands::create_task_core(connection, CreateTaskInput {
             work_date: "2026-09-02".into(), title: title.into(),
             importance: "important".into(), urgency: "urgent".into(), parent_id,
-            planned_start: None, planned_end: None,
+            planned_start: None, planned_end: None, workload: None,
         }).unwrap().tasks.last().unwrap().clone()
     }
 
@@ -306,6 +306,10 @@ mod tests {
         let parent = create(&mut connection, "整理资料", None);
         let completed_child = create(&mut connection, "已做完的图表", Some(parent.id.clone()));
         let open_child = create(&mut connection, "制作 PPT", Some(parent.id.clone()));
+        commands::update_task_core(&mut connection, crate::model::UpdateTaskInput {
+            work_date: "2026-09-02".into(), instance_id: open_child.id.clone(), title: open_child.title.clone(),
+            planned_start: None, planned_end: None, importance: None, urgency: None, workload: Some("large".into()),
+        }).unwrap();
         commands::set_task_status_core(&mut connection, SetTaskStatusInput {
             work_date: "2026-09-02".into(), instance_id: completed_child.id.clone(), status: "completed".into(),
         }).unwrap();
@@ -315,6 +319,7 @@ mod tests {
         assert_eq!(result.next_day.tasks[1].display_code, "#1.1");
         assert_eq!(result.next_day.tasks[0].permanent_task_id, parent.permanent_task_id);
         assert_eq!(result.next_day.tasks[1].permanent_task_id, open_child.permanent_task_id);
+        assert_eq!(result.next_day.tasks[1].workload.as_deref(), Some("large"));
         assert!(!result.next_day.tasks.iter().any(|task| task.permanent_task_id == completed_child.permanent_task_id));
     }
 

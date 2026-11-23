@@ -1,6 +1,9 @@
 import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, validScheduleRange, type DailySchedule, type DayState, type DayTask, type TaskStatus } from '../domain/model'
 import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, saveDay } from './dayStorage'
+import { saveLongTermItem, validateWorkload, type LongTermItem, type SaveLongTermItem } from '../domain/longTerm'
+
+const longTermKey = 'worklog.longTermWork.v1'
 
 const commit = (day: DayState) => { saveDay(day); return structuredClone(day) }
 const nextDate = (workDate: string) => {
@@ -17,17 +20,29 @@ const findTask = (day: DayState, taskId: string) => {
 }
 
 export class BrowserGateway implements WorklogGateway {
+  async listLongTermWork(): Promise<LongTermItem[]> {
+    return JSON.parse(localStorage.getItem(longTermKey) ?? '[]') as LongTermItem[]
+  }
+
+  async saveLongTermWork(input: SaveLongTermItem) {
+    const items = JSON.parse(localStorage.getItem(longTermKey) ?? '[]') as LongTermItem[]
+    const next = saveLongTermItem(items, input, id)
+    localStorage.setItem(longTermKey, JSON.stringify(next))
+    return next
+  }
+
   async getDaySnapshot(workDate: string) { return structuredClone(loadDay(workDate)) }
 
   async createTask(input: CreateTaskRequest) {
     const day = loadDay(input.workDate)
     const parent = input.parentId ? findTask(day, input.parentId) : null
+    validateWorkload(parent !== null, input.workload)
     const displayCode = nextDisplayCode(day.tasks, input.parentId)
     const task: DayTask = {
       id: id(), permanentTaskId: id(), parentId: input.parentId, displayCode, title: input.title,
       status: 'not_started', importance: parent?.importance ?? input.importance,
       urgency: parent?.urgency ?? input.urgency, plannedStart: input.plannedStart,
-      plannedEnd: input.plannedEnd, createdAt: new Date().toISOString(),
+      plannedEnd: input.plannedEnd, createdAt: new Date().toISOString(), workload: input.workload ?? null,
     }
     return commit({ ...day, tasks: [...day.tasks, task], timeline: [...day.timeline, timelineEvent('task.created', `新增任务${displayCode}：${input.title}`)] })
   }
@@ -35,6 +50,7 @@ export class BrowserGateway implements WorklogGateway {
   async updateTask(input: UpdateTaskRequest) {
     const day = loadDay(input.workDate)
     const task = findTask(day, input.instanceId)
+    validateWorkload(task.parentId !== null, input.workload)
     const title = input.title.trim()
     if (!title) throw new Error('任务内容不能为空')
     if ((input.plannedStart === null) !== (input.plannedEnd === null)) throw new Error('任务时间段无效')
@@ -45,7 +61,7 @@ export class BrowserGateway implements WorklogGateway {
       ...day,
       tasks: day.tasks.map((item) => {
         let updated = item.permanentTaskId === task.permanentTaskId ? { ...item, title } : item
-        if (item.id === input.instanceId) updated = { ...updated, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd }
+        if (item.id === input.instanceId) updated = { ...updated, plannedStart: input.plannedStart, plannedEnd: input.plannedEnd, workload: input.workload ?? null }
         if (classification && (item.id === input.instanceId || item.parentId === input.instanceId)) updated = { ...updated, ...classification }
         return updated
       }),
@@ -212,7 +228,7 @@ export class BrowserGateway implements WorklogGateway {
       const status: TaskStatus = task.status === 'waiting' || task.status === 'blocked' ? task.status : 'not_started'
       const carried: DayTask = {
         ...task, id: id(), parentId, displayCode, status,
-        plannedStart: null, plannedEnd: null, createdAt: new Date().toISOString(),
+        plannedStart: null, plannedEnd: null, createdAt: new Date().toISOString(), workload: parentId ? task.workload : null,
       }
       carriedTasks.push(carried)
       destination.set(task.id, carried.id)

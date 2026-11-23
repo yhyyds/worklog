@@ -2,8 +2,6 @@ name: Windows Release
 
 on:
   push:
-    branches:
-      - 'baseline/1.4.0'
     tags:
       - 'v*.*.*'
 
@@ -11,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.4.0' }}
+  RELEASE_TAG: ${{ github.ref_name }}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,15 +20,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Create release tag from the stable baseline
-        if: github.ref_type == 'branch'
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag $env:RELEASE_TAG $env:GITHUB_SHA
-          git push origin "refs/tags/$env:RELEASE_TAG"
 
       - uses: actions/setup-node@v4
         with:

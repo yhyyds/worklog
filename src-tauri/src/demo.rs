@@ -18,7 +18,7 @@ pub fn prepare() -> Result<PathBuf, Box<dyn std::error::Error>> {
         for number in 0..3 {
             let day = commands::create_task_core(&mut connection, CreateTaskInput {
                 work_date:text.clone(), title:format!("演示 · {}",["认识常见电器元件","练习识读控制回路","整理图形符号笔记"][number]),
-                parent_id:None, importance:"important".into(), urgency:if number==0 {"urgent"} else {"relaxed"}.into(), planned_start:None, planned_end:None,
+                parent_id:None, importance:"important".into(), urgency:if number==0 {"urgent"} else {"relaxed"}.into(), planned_start:None, planned_end:None, workload:None,
             })?;
             let task = day.tasks.last().unwrap();
             let instance = task.id.clone();

@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.4.0`，分支 `codex/1.4.0-focus-timeline-task-edit`，从经验证的 `baseline/1.3.0` 提交 `8deaaab` 继续。1.4 规则见 `docs/V1_4_FOCUS_TIMELINE_TASK_EDIT.md`：新建表单可取消，想法跟随当前专注，时间线在读取层按两分钟归组，一级任务可调整象限。
+当前迭代为 `1.5.0`，分支 `codex/1.5.0-long-term-work`，从经验证的 `baseline/1.4.0` 提交 `ef4d970` 继续。长期任务板独立保存，主任务默认折叠，子任务才允许填写三档预估工作量。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

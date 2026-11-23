@@ -8,6 +8,7 @@ mod categories;
 mod planning;
 mod sharing;
 mod inbox;
+mod long_term;
 mod model;
 mod notes;
 mod obsidian;
@@ -125,6 +126,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             healthcheck,
+            long_term::list_long_term_work,
+            long_term::save_long_term_work,
             categories::get_growth_catalog,
             categories::save_growth_category,
             categories::assign_growth_category,
