@@ -126,6 +126,7 @@ export default function SettingsWorkspace() {
       setStorage(result.settings)
       setPathMessage(`数据库已迁移并立即切换。原数据库仍保留为安全备份：${result.previousDatabasePath}`)
       window.dispatchEvent(new Event('worklog:reload'))
+      window.dispatchEvent(new Event('worklog:storage-changed'))
     } catch (reason) {
       setError(String(reason))
     } finally {

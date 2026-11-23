@@ -606,13 +606,13 @@ mod tests {
                     display_code: "#1".into(), title: "整理资料".into(), status: "completed".into(),
                     importance: "important".into(), urgency: "urgent".into(),
                     planned_start: Some("08:00".into()), planned_end: Some("09:00".into()),
-                    created_at: "2026-09-02T00:00:00Z".into(),
+                    created_at: "2026-09-02T00:00:00Z".into(), workload: None,
                 },
                 DayTask {
                     id: "instance-2".into(), permanent_task_id: "task-2".into(), parent_id: Some("instance-1".into()),
                     display_code: "#1.1".into(), title: "制作 PPT".into(), status: "not_started".into(),
                     importance: "important".into(), urgency: "urgent".into(),
-                    planned_start: None, planned_end: None, created_at: "2026-09-02T00:00:00Z".into(),
+                    planned_start: None, planned_end: None, created_at: "2026-09-02T00:00:00Z".into(), workload: None,
                 },
             ],
             schedules: vec![DailySchedule {

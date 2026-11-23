@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { elapsedFocusSeconds, groupTimelineEvents, incompleteFirst, remainingSeconds, resolveWorkEntryTask, schedulesByTime, validScheduleRange, type DailySchedule, type DayTask, type EntryType, type Importance, type ReviewLevel, type Urgency } from './domain/model'
 import { useWorklog } from './application/useWorklog'
 import { NAV_ITEMS, navigationAction, type NavItem } from './application/navigation'
+import LongTermWork, { WorkloadSelect } from './components/LongTermWork'
+import { WORKLOAD_LABELS, type Workload } from './domain/longTerm'
 
 const quadrants: Array<{ key: string; title: string; note: string; importance: Importance; urgency: Urgency }> = [
   { key: 'important-urgent', title: '重要 · 紧急', note: '今天优先推进', importance: 'important', urgency: 'urgent' },
@@ -68,14 +70,14 @@ function App() {
     operation.catch(() => { completing.current = false })
   }, [day.focus, day.rest, left, worklog])
 
-  function createTask(title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) {
-    ignore(worklog.createTask(title, importance, urgency, parentId, plannedStart, plannedEnd))
+  function createTask(title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null, workload: Workload | null) {
+    ignore(worklog.createTask(title, importance, urgency, parentId, plannedStart, plannedEnd, workload))
     setChildFor(null)
     setQuickCreateQuadrant(null)
   }
 
-  function updateTask(task: DayTask, title: string, plannedStart: string | null, plannedEnd: string | null, importance: Importance | null, urgency: Urgency | null) {
-    ignore(worklog.updateTask(task.id, title, plannedStart, plannedEnd, importance, urgency).then(() => setEditingTaskId(null)))
+  function updateTask(task: DayTask, title: string, plannedStart: string | null, plannedEnd: string | null, importance: Importance | null, urgency: Urgency | null, workload: Workload | null) {
+    ignore(worklog.updateTask(task.id, title, plannedStart, plannedEnd, importance, urgency, workload).then(() => setEditingTaskId(null)))
   }
 
   function toggleTask(task: DayTask) {
@@ -142,6 +144,7 @@ function App() {
 
       <div className="content-grid">
         <section className="tasks-panel">
+          <LongTermWork />
           <div className="section-heading"><div><h2>今日安排</h2><p>按重要性与紧急性分类</p></div><TaskForm compact onCreate={createTask}/></div>
           <div className="quadrants">{quadrants.map((quadrant) => {
             const tasks = incompleteFirst(day.tasks.filter((task) => !task.parentId && task.importance === quadrant.importance && task.urgency === quadrant.urgency))
@@ -161,7 +164,7 @@ function App() {
                       ? <TaskEditForm key={child.id} task={child} onSave={updateTask} onCancel={() => setEditingTaskId(null)}/>
                       : <div className="child" key={child.id}>
                         <button type="button" className="mini-check" aria-label={`${child.status === 'completed' ? '标记为未完成' : '标记为已完成'}：${child.title}`} aria-pressed={child.status === 'completed'} onClick={(event) => { event.stopPropagation(); toggleTask(child) }}>{child.status === 'completed' && <CompletionMark />}</button>
-                        <span className={child.status === 'completed' ? 'strike' : ''}>{child.displayCode} {child.title}{child.plannedStart ? ` · ${child.plannedStart}–${child.plannedEnd}` : ''}</span>
+                        <span className={child.status === 'completed' ? 'strike' : ''}>{child.displayCode} {child.title}{child.plannedStart ? ` · ${child.plannedStart}–${child.plannedEnd}` : ''}{child.workload && <small className="workload-badge">{WORKLOAD_LABELS[child.workload]}</small>}</span>
                         <button type="button" className="edit-task child-edit" onClick={(event) => { event.stopPropagation(); setEditingTaskId(child.id) }}>编辑</button>
                       </div>)}
                     {childFor === task.id ? <TaskForm parentId={task.id} importance={task.importance} urgency={task.urgency} onCreate={createTask} onCancel={() => setChildFor(null)}/> : <button className="add-child" onClick={(event) => { event.stopPropagation(); setChildFor(task.id) }}>＋ 新建子任务</button>}
@@ -246,22 +249,24 @@ interface TaskFormProps {
   parentId?: string | null
   importance?: Importance
   urgency?: Urgency
-  onCreate: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, start: string | null, end: string | null) => void
+  onCreate: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, start: string | null, end: string | null, workload: Workload | null) => void
   onCancel?: () => void
 }
 
-function TaskEditForm({ task, onSave, onCancel }: { task: DayTask; onSave: (task: DayTask, title: string, start: string | null, end: string | null, importance: Importance | null, urgency: Urgency | null) => void; onCancel: () => void }) {
+function TaskEditForm({ task, onSave, onCancel }: { task: DayTask; onSave: (task: DayTask, title: string, start: string | null, end: string | null, importance: Importance | null, urgency: Urgency | null, workload: Workload | null) => void; onCancel: () => void }) {
   const [title, setTitle] = useState(task.title)
   const [timed, setTimed] = useState(Boolean(task.plannedStart && task.plannedEnd))
   const [start, setStart] = useState(task.plannedStart ?? '09:00')
   const [end, setEnd] = useState(task.plannedEnd ?? '10:00')
   const [importance, setImportance] = useState(task.importance)
   const [urgency, setUrgency] = useState(task.urgency)
-  return <form className="task-edit-form" onSubmit={(event) => { event.preventDefault(); if (title.trim()) onSave(task, title.trim(), timed ? start : null, timed ? end : null, task.parentId ? null : importance, task.parentId ? null : urgency) }} onClick={(event) => event.stopPropagation()}>
+  const [workload, setWorkload] = useState<Workload | null>(task.workload ?? null)
+  return <form className="task-edit-form" onSubmit={(event) => { event.preventDefault(); if (title.trim()) onSave(task, title.trim(), timed ? start : null, timed ? end : null, task.parentId ? null : importance, task.parentId ? null : urgency, task.parentId ? workload : null) }} onClick={(event) => event.stopPropagation()}>
     <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} aria-label={`修改${task.displayCode}内容`}/>
     {!task.parentId && <div className="task-edit-priority"><select aria-label="修改重要程度" value={importance} onChange={(event) => setImportance(event.target.value as Importance)}><option value="important">重要</option><option value="secondary">次要</option></select><select aria-label="修改紧急程度" value={urgency} onChange={(event) => setUrgency(event.target.value as Urgency)}><option value="urgent">紧急</option><option value="relaxed">稍缓</option></select></div>}
     <label><input type="checkbox" checked={timed} onChange={(event) => setTimed(event.target.checked)}/>安排时间</label>
     {timed && <span className="time-range"><input type="time" value={start} onChange={(event) => setStart(event.target.value)}/><b>–</b><input type="time" value={end} onChange={(event) => setEnd(event.target.value)}/></span>}
+    {task.parentId && <WorkloadSelect value={workload} onChange={setWorkload}/>}
     <div><button type="submit">保存</button><button type="button" className="cancel" onClick={onCancel}>取消</button></div>
   </form>
 }
@@ -274,11 +279,13 @@ function TaskForm({ compact, parentId = null, importance: initialImportance = 'i
   const [timed, setTimed] = useState(false)
   const [start, setStart] = useState('09:00')
   const [end, setEnd] = useState('10:00')
+  const [workload, setWorkload] = useState<Workload | null>(null)
   if (!open) return <button className="primary small" onClick={() => setOpen(true)}>＋ 新建日程</button>
-  return <form className={`task-form ${parentId ? 'child-form' : ''}`} onSubmit={(event) => { event.preventDefault(); if (!title.trim()) return; onCreate(title.trim(), importance, urgency, parentId, timed ? start : null, timed ? end : null); setTitle(''); if (compact) setOpen(false) }} onClick={(event) => event.stopPropagation()}>
+  return <form className={`task-form ${parentId ? 'child-form' : ''}`} onSubmit={(event) => { event.preventDefault(); if (!title.trim()) return; onCreate(title.trim(), importance, urgency, parentId, timed ? start : null, timed ? end : null, parentId ? workload : null); setTitle(''); if (compact) setOpen(false) }} onClick={(event) => event.stopPropagation()}>
     <input autoFocus={!compact} value={title} onChange={(event) => setTitle(event.target.value)} placeholder={parentId ? '子任务内容' : '输入新事项…'}/>
     {!parentId && <><select value={importance} onChange={(event) => setImportance(event.target.value as Importance)}><option value="important">重要</option><option value="secondary">次要</option></select><select value={urgency} onChange={(event) => setUrgency(event.target.value as Urgency)}><option value="urgent">紧急</option><option value="relaxed">稍缓</option></select><label className="time-toggle"><input type="checkbox" checked={timed} onChange={(event) => setTimed(event.target.checked)}/>安排时间</label>{timed && <span className="time-range"><input type="time" value={start} onChange={(event) => setStart(event.target.value)}/><b>–</b><input type="time" value={end} onChange={(event) => setEnd(event.target.value)}/></span>}</>}
     <button type="submit">保存</button>{(compact || onCancel) && <button type="button" className="cancel" onClick={() => { setTitle(''); if (compact) setOpen(false); onCancel?.() }}>取消</button>}
+    {parentId && <WorkloadSelect value={workload} onChange={setWorkload}/>}
   </form>
 }
 

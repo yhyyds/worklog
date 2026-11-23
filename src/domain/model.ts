@@ -1,3 +1,5 @@
+import type { Workload } from './longTerm'
+
 export type Importance = 'important' | 'secondary'
 export type Urgency = 'urgent' | 'relaxed'
 export type TaskStatus = 'not_started' | 'in_progress' | 'waiting' | 'blocked' | 'completed' | 'deferred' | 'cancelled'
@@ -16,6 +18,7 @@ export interface DayTask {
   plannedStart: string | null
   plannedEnd: string | null
   createdAt: string
+  workload?: Workload | null
 }
 
 export interface DailySchedule {

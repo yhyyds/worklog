@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { emptyDay, localDate, type EntryType, type Importance, type ReviewLevel, type TaskStatus, type Urgency } from '../domain/model'
 import { createGateway } from '../infrastructure/createGateway'
 import { canRollDay } from '../domain/dayRollover'
+import type { Workload } from '../domain/longTerm'
 
 export function useWorklog() {
   const gateway = useMemo(createGateway, [])
@@ -52,8 +53,8 @@ export function useWorklog() {
 
   return {
     day, workDate, workMinutes, timerMode, busy, error, clearError: () => setError(null),
-    createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd })),
-    updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null, importance: Importance | null, urgency: Urgency | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd, importance, urgency })),
+    createTask: (title: string, importance: Importance, urgency: Urgency, parentId: string | null, plannedStart: string | null, plannedEnd: string | null, workload: Workload | null) => run(() => gateway.createTask({ workDate, title, importance, urgency, parentId, plannedStart, plannedEnd, workload })),
+    updateTask: (instanceId: string, title: string, plannedStart: string | null, plannedEnd: string | null, importance: Importance | null, urgency: Urgency | null, workload: Workload | null) => run(() => gateway.updateTask({ workDate, instanceId, title, plannedStart, plannedEnd, importance, urgency, workload })),
     setTaskStatus: (instanceId: string, status: TaskStatus) => run(() => gateway.setTaskStatus(workDate, instanceId, status)),
     saveSchedule: (scheduleId: string | null, title: string, plannedStart: string, plannedEnd: string) => run(() => gateway.saveSchedule({ workDate, scheduleId, title, plannedStart, plannedEnd })),
     cancelSchedule: (scheduleId: string) => run(() => gateway.cancelSchedule(workDate, scheduleId)),

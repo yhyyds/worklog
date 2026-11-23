@@ -14,6 +14,7 @@ pub struct DayTask {
     pub planned_start: Option<String>,
     pub planned_end: Option<String>,
     pub created_at: String,
+    pub workload: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -103,6 +104,7 @@ pub struct CreateTaskInput {
     pub parent_id: Option<String>,
     pub planned_start: Option<String>,
     pub planned_end: Option<String>,
+    pub workload: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -115,6 +117,7 @@ pub struct UpdateTaskInput {
     pub planned_end: Option<String>,
     pub importance: Option<String>,
     pub urgency: Option<String>,
+    pub workload: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,8 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { LongTermItem, SaveLongTermItem } from '../domain/longTerm'
 import type { DayState, TaskStatus } from '../domain/model'
 import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 
 export class DesktopGateway implements WorklogGateway {
+  listLongTermWork() { return invoke<LongTermItem[]>('list_long_term_work') }
+  saveLongTermWork(input: SaveLongTermItem) { return invoke<LongTermItem[]>('save_long_term_work', { input }) }
   getDaySnapshot(workDate: string) { return invoke<DayState>('get_day_snapshot', { workDate }) }
   createTask(input: CreateTaskRequest) { return invoke<DayState>('create_task', { input }) }
   updateTask(input: UpdateTaskRequest) { return invoke<DayState>('update_task', { input }) }

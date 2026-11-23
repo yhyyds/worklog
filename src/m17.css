@@ -1,0 +1,89 @@
+.long-work {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid #d8dfd8;
+  border-radius: 14px;
+  background: #f4f7f4;
+}
+
+.long-work-heading,
+.long-work-row,
+.long-work-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.long-work-heading {
+  justify-content: space-between;
+}
+
+.long-work-heading h3,
+.long-work-heading p { margin: 0; }
+.long-work-heading p,
+.long-work-empty { color: #5d6d66; font-size: .8rem; }
+.long-work-list {
+  display: grid;
+  gap: 6px;
+  max-block-size: min(18rem, 38vh);
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.long-work-list article {
+  border: 1px solid #e0e7e3;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+
+.long-work button:not(.primary) {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: #edf2ef;
+  color: #395b4b;
+}
+
+.long-work button:disabled { opacity: .55; }
+.long-work .long-work-disclosure {
+  flex: 1 1 150px;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  text-align: left;
+}
+
+.long-work-disclosure strong,
+.long-work-child > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.long-work-disclosure small { flex-shrink: 0; }
+.long-work-children { padding: 6px 4px 2px 14px; }
+.long-work-child { margin-bottom: 6px; }
+.long-work-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; margin: 7px 0; }
+.long-work-form > input,
+.workload-select select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cfd8d2;
+  border-radius: 7px;
+  padding: 5px 7px;
+  background: white;
+  color: var(--ink);
+}
+
+.workload-select,
+.task-edit-form > .workload-select {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  flex: 1 0 100%;
+  grid-column: 1 / -1;
+  color: #405348;
+  font-size: .75rem;
+}
+
+.workload-select small { color: #5d6d66; }
+.workload-badge { display: inline-block; margin-inline: 4px; color: #405348; background: #e6efe9; padding: 1px 4px; border-radius: 4px; }
+.long-work-error { color: #9b4136; overflow-wrap: anywhere; }

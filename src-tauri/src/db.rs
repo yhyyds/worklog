@@ -30,6 +30,7 @@ pub fn initialize(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(include_str!("../migrations/0008_task_inbox.sql"))?;
     connection.execute_batch(include_str!("../migrations/0009_planning_privacy.sql"))?;
     connection.execute_batch(include_str!("../migrations/0010_daily_schedules.sql"))?;
+    connection.execute_batch(include_str!("../migrations/0011_long_term_work.sql"))?;
     Ok(())
 }
 
@@ -80,14 +81,14 @@ pub fn append_event(
 
 pub fn read_day(connection: &Connection, work_date: &str) -> Result<DayState, String> {
     let mut task_statement = connection.prepare(
-        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.work_date=?1 AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id) ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
+        "SELECT i.id,t.id,i.parent_instance_id,i.display_code,t.title,i.day_status,i.importance,i.urgency,i.planned_start_minute,i.planned_end_minute,t.created_at_utc,w.workload FROM task_day_instances i JOIN tasks t ON t.id=i.task_id LEFT JOIN task_workloads w ON w.task_id=t.id AND i.parent_instance_id IS NOT NULL WHERE i.work_date=?1 AND NOT EXISTS(SELECT 1 FROM inbox_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM goal_removed_instances r WHERE r.instance_id=i.id) ORDER BY i.top_level_no,COALESCE(i.child_no,0)"
     ).map_err(|error| error.to_string())?;
     let tasks = task_statement.query_map([work_date], |row| Ok(DayTask {
         id: row.get(0)?, permanent_task_id: row.get(1)?, parent_id: row.get(2)?,
         display_code: row.get(3)?, title: row.get(4)?, status: row.get(5)?,
         importance: row.get(6)?, urgency: row.get(7)?,
         planned_start: minute_text(row.get(8)?), planned_end: minute_text(row.get(9)?),
-        created_at: row.get(10)?,
+        created_at: row.get(10)?, workload: row.get(11)?,
     })).map_err(|error| error.to_string())?
       .collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
 
@@ -177,13 +178,23 @@ mod migration_tests {
             "INSERT INTO app_settings(key,value_json,updated_at_utc) VALUES('sentinel','{\"kept\":true}',?1)",
             [now_iso()],
         ).unwrap();
+        connection.execute_batch(
+            "INSERT INTO tasks(id,title,status,created_at_utc,updated_at_utc)
+             VALUES('old-task','旧任务','not_started','now','now');
+             INSERT INTO task_day_instances(id,task_id,work_date,display_code,top_level_no,importance,urgency,sort_order,created_at_utc,updated_at_utc)
+             VALUES('old-instance','old-task','2026-11-22','#1',1,'important','urgent',1000,'now','now');"
+        ).unwrap();
+        initialize(&connection).unwrap();
         initialize(&connection).unwrap();
         let value: String = connection.query_row("SELECT value_json FROM app_settings WHERE key='sentinel'", [], |row| row.get(0)).unwrap();
         assert_eq!(value, "{\"kept\":true}");
         let new_tables: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('focus_session_modes','habits','long_term_goals','quote_usage','daily_schedules')",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('focus_session_modes','habits','long_term_goals','quote_usage','daily_schedules','long_term_work','task_workloads')",
             [], |row| row.get(0),
         ).unwrap();
-        assert_eq!(new_tables, 5);
+        assert_eq!(new_tables, 7);
+        let day = read_day(&connection, "2026-11-22").unwrap();
+        assert_eq!(day.tasks[0].title, "旧任务");
+        assert_eq!(day.tasks[0].workload, None);
     }
 }

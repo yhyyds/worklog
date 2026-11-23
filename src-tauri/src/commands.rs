@@ -1,4 +1,4 @@
-use crate::{db, model::*, Database};
+use crate::{db, long_term::validate_workload, model::*, Database};
 use chrono::{Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use tauri::{AppHandle, Emitter, State};
@@ -14,9 +14,19 @@ fn task_info(transaction: &Transaction<'_>, instance_id: &str) -> Result<(String
     ).map_err(|_| "任务不存在或不在今天".to_string())
 }
 
+fn save_workload(transaction: &Transaction<'_>, task_id: &str, workload: Option<&str>) -> Result<(), String> {
+    transaction.execute(
+        "INSERT INTO task_workloads(task_id,workload) VALUES(?1,?2)
+         ON CONFLICT(task_id) DO UPDATE SET workload=excluded.workload",
+        params![task_id, workload],
+    ).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInput) -> Result<DayState, String> {
     let title = input.title.trim();
     if title.is_empty() { return Err("任务内容不能为空".into()); }
+    validate_workload(input.parent_id.is_some(), input.workload.as_deref())?;
     validate_choice(&input.importance, &["important", "secondary"], "重要性")?;
     validate_choice(&input.urgency, &["urgent", "relaxed"], "紧急性")?;
     let start = db::minute_value(&input.planned_start)?;
@@ -58,6 +68,7 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
         "INSERT INTO task_day_instances(id,task_id,work_date,parent_instance_id,display_code,top_level_no,child_no,importance,urgency,day_status,planned_start_minute,planned_end_minute,sort_order,created_at_utc,updated_at_utc) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'not_started',?10,?11,?12,?13,?13)",
         params![instance_id, task_id, input.work_date, input.parent_id, display_code, top_level_no, child_no, importance, urgency, start, end, top_level_no * 1000 + child_no.unwrap_or(0), now],
     ).map_err(|error| error.to_string())?;
+    if input.workload.is_some() { save_workload(&transaction, &task_id, input.workload.as_deref())?; }
     db::append_event(&transaction, "task.created", "task", &task_id, &input.work_date, "summary", &format!("新增任务{display_code}：{title}"), None, &transaction_id)?;
     transaction.commit().map_err(|error| error.to_string())?;
     db::read_day(connection, &input.work_date)
@@ -91,6 +102,8 @@ pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInp
     if parent_instance_id.is_some() && classification.is_some() {
         return Err("只能修改一级任务的重要性和紧急性".into());
     }
+    validate_workload(parent_instance_id.is_some(), input.workload.as_deref())?;
+    if parent_instance_id.is_some() { save_workload(&transaction, &task_id, input.workload.as_deref())?; }
     let now = db::now_iso();
     transaction.execute(
         "UPDATE tasks SET title=?1,updated_at_utc=?2,row_version=row_version+1 WHERE id=?3",
@@ -419,7 +432,7 @@ mod tests {
     }
 
     fn task_input(title: &str, parent_id: Option<String>) -> CreateTaskInput {
-        CreateTaskInput { work_date: "2026-09-02".into(), title: title.into(), importance: "important".into(), urgency: "urgent".into(), parent_id, planned_start: None, planned_end: None }
+        CreateTaskInput { work_date: "2026-09-02".into(), title: title.into(), importance: "important".into(), urgency: "urgent".into(), parent_id, planned_start: None, planned_end: None, workload: None }
     }
 
     #[test]
@@ -428,6 +441,28 @@ mod tests {
         let day = create_task_core(&mut connection, task_input("整理资料", None)).unwrap();
         assert_eq!(day.tasks[0].display_code, "#1");
         assert_eq!(day.timeline[0].event_type, "task.created");
+    }
+
+    #[test]
+    fn workload_is_optional_and_only_valid_for_children() {
+        let mut connection = connection();
+        let mut invalid_parent = task_input("父任务", None);
+        invalid_parent.workload = Some("light".into());
+        assert!(create_task_core(&mut connection, invalid_parent).is_err());
+        let parent = create_task_core(&mut connection, task_input("父任务", None)).unwrap().tasks.remove(0);
+        let mut input = task_input("子任务", Some(parent.id));
+        input.workload = Some("over_3h".into());
+        assert!(create_task_core(&mut connection, input.clone()).is_err());
+        input.workload = Some("light".into());
+        let day = create_task_core(&mut connection, input).unwrap();
+        assert_eq!(day.timeline.len(), 2);
+        assert_eq!(day.tasks[0].workload, None);
+        assert_eq!(day.tasks[1].workload.as_deref(), Some("light"));
+        let day = update_task_core(&mut connection, UpdateTaskInput {
+            work_date: day.work_date.clone(), instance_id: day.tasks[1].id.clone(), title: "子任务".into(),
+            planned_start: None, planned_end: None, importance: None, urgency: None, workload: None,
+        }).unwrap();
+        assert_eq!(day.tasks[1].workload, None);
     }
 
     #[test]
@@ -460,7 +495,7 @@ mod tests {
             planned_start: Some("10:00".into()),
             planned_end: Some("11:00".into()),
             importance: Some("secondary".into()),
-            urgency: Some("relaxed".into()),
+            urgency: Some("relaxed".into()), workload: None,
         }).unwrap();
         assert_eq!(day.tasks[0].title, "进一步整理资料");
         assert_eq!(day.tasks[0].planned_start.as_deref(), Some("10:00"));
@@ -477,7 +512,7 @@ mod tests {
         let error = update_task_core(&mut connection, UpdateTaskInput {
             work_date: "2026-09-02".into(), instance_id: child, title: "新目录".into(),
             planned_start: None, planned_end: None,
-            importance: Some("secondary".into()), urgency: Some("relaxed".into()),
+            importance: Some("secondary".into()), urgency: Some("relaxed".into()), workload: None,
         }).unwrap_err();
         assert!(error.contains("只能修改一级任务"));
     }

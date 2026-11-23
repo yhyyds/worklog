@@ -291,7 +291,7 @@ mod tests {
     }
     #[test] fn moving_and_restoring_a_parent_keeps_children_and_events() {
         let mut c=connection(); let date=Local::now().format("%Y-%m-%d").to_string();
-        let input=|title:&str,parent_id|CreateTaskInput { work_date:date.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None };
+        let input=|title:&str,parent_id|CreateTaskInput { work_date:date.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None };
         let day=commands::create_task_core(&mut c,input("父任务",None)).unwrap(); let root=day.tasks[0].clone();
         commands::create_task_core(&mut c,input("子任务",Some(root.id.clone()))).unwrap();
         assert_eq!(move_core(&mut c,&root.id,&date).unwrap().len(),2);
@@ -303,7 +303,7 @@ mod tests {
     }
     #[test] fn separately_parked_child_is_promoted_when_restored() {
         let mut c=connection(); let date=Local::now().format("%Y-%m-%d").to_string();
-        let input=|title:&str,parent_id|CreateTaskInput { work_date:date.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None };
+        let input=|title:&str,parent_id|CreateTaskInput { work_date:date.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None };
         let day=commands::create_task_core(&mut c,input("父任务",None)).unwrap(); let root=day.tasks[0].clone();
         let day=commands::create_task_core(&mut c,input("子任务",Some(root.id.clone()))).unwrap(); let child=day.tasks[1].clone();
         move_core(&mut c,&child.id,&date).unwrap();
@@ -315,7 +315,7 @@ mod tests {
     }
     #[test] fn active_focus_blocks_parking_without_partial_writes() {
         let mut c=connection(); let date=Local::now().format("%Y-%m-%d").to_string();
-        let day=commands::create_task_core(&mut c,CreateTaskInput { work_date:date.clone(),title:"专注任务".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None }).unwrap();
+        let day=commands::create_task_core(&mut c,CreateTaskInput { work_date:date.clone(),title:"专注任务".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None }).unwrap();
         let id=day.tasks[0].id.clone();
         commands::start_focus_core(&mut c,crate::model::StartFocusInput { work_date:date.clone(),task_id:id.clone(),planned_seconds:1500 }).unwrap();
         assert!(move_core(&mut c,&id,&date).is_err());
@@ -326,7 +326,7 @@ mod tests {
     #[test] fn historical_parent_reschedule_keeps_ids_and_omits_completed_children() {
         let mut c=connection();
         let today=Local::now().date_naive(); let old=(today-chrono::Duration::days(2)).to_string(); let target=today.to_string();
-        let input=|title:&str,parent_id|CreateTaskInput { work_date:old.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None };
+        let input=|title:&str,parent_id|CreateTaskInput { work_date:old.clone(),title:title.into(),parent_id,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None };
         let parent=commands::create_task_core(&mut c,input("历史父任务",None)).unwrap().tasks[0].clone();
         let done=commands::create_task_core(&mut c,input("已完成子任务",Some(parent.id.clone()))).unwrap().tasks[1].clone();
         let open=commands::create_task_core(&mut c,input("未完成子任务",Some(parent.id.clone()))).unwrap().tasks[2].clone();
@@ -345,7 +345,7 @@ mod tests {
     #[test] fn historical_reschedule_is_atomic_when_destination_already_contains_task() {
         let mut c=connection();
         let today=Local::now().date_naive(); let old=(today-chrono::Duration::days(1)).to_string(); let target=today.to_string();
-        let task=commands::create_task_core(&mut c,CreateTaskInput { work_date:old.clone(),title:"重复安排检查".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None }).unwrap().tasks[0].clone();
+        let task=commands::create_task_core(&mut c,CreateTaskInput { work_date:old.clone(),title:"重复安排检查".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None }).unwrap().tasks[0].clone();
         c.execute("INSERT INTO task_day_instances(id,task_id,work_date,display_code,top_level_no,importance,urgency,sort_order,created_at_utc,updated_at_utc) VALUES('existing',?1,?2,'#1',1,'important','urgent',1000,'now','now')",params![task.permanent_task_id,target]).unwrap();
         assert!(reschedule_historical_core(&mut c,&task.id,&target,&target).is_err());
         assert_eq!(c.query_row("SELECT day_status FROM task_day_instances WHERE id=?1",[task.id],|row|row.get::<_,String>(0)).unwrap(),"not_started");
@@ -353,7 +353,7 @@ mod tests {
     #[test] fn repeating_goal_task_remains_visible_but_requires_growth_planning() {
         let mut c=connection();
         let today=Local::now().date_naive(); let old=(today-chrono::Duration::days(1)).to_string(); let target=today.to_string();
-        let task=commands::create_task_core(&mut c,CreateTaskInput { work_date:old.clone(),title:"重复目标任务".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None }).unwrap().tasks[0].clone();
+        let task=commands::create_task_core(&mut c,CreateTaskInput { work_date:old.clone(),title:"重复目标任务".into(),parent_id:None,importance:"important".into(),urgency:"urgent".into(),planned_start:None,planned_end:None,workload:None }).unwrap().tasks[0].clone();
         c.execute_batch("INSERT INTO long_term_goals(id,title,cycle_days,start_date,created_at_utc,updated_at_utc) VALUES('g','目标',30,'2026-01-01','now','now'); INSERT INTO goal_phases(id,goal_id,title,start_date,end_date,created_at_utc,updated_at_utc) VALUES('p','g','阶段','2026-01-01','2099-12-31','now','now'); INSERT INTO goal_actions(id,phase_id,title,action_kind,required,target_count,created_at_utc,updated_at_utc) VALUES('a','p','任务','repeating',1,2,'now','now');").unwrap();
         c.execute("INSERT INTO goal_action_occurrences(id,action_id,task_id,scheduled_date,action_kind) VALUES('o','a',?1,?2,'repeating')",params![task.permanent_task_id,old]).unwrap();
         let historical=list_historical_core(&c,&target).unwrap();

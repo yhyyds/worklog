@@ -318,7 +318,7 @@ mod tests {
         commands::create_task_core(connection, CreateTaskInput {
             work_date: "2026-09-02".into(), title: "整理资料".into(),
             importance: "important".into(), urgency: "urgent".into(),
-            parent_id: None, planned_start: None, planned_end: None,
+            parent_id: None, planned_start: None, planned_end: None, workload: None,
         }).unwrap().tasks[0].id.clone()
     }
 
