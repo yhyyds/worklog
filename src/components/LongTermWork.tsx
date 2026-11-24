@@ -61,6 +61,7 @@ export default function LongTermWork({ onItemsChange }: { onItemsChange: (items:
     try {
       setItems(await gateway.saveLongTermWork(input))
       if (closeForm) setEdit(null)
+      window.dispatchEvent(new Event('worklog:reload'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {

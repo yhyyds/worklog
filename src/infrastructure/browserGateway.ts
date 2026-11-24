@@ -1,4 +1,4 @@
-import { elapsedFocusSeconds, id, nextDisplayCode, remainingSeconds, timelineEvent, validScheduleRange, type DailySchedule, type DayState, type DayTask, type TaskStatus } from '../domain/model'
+import { elapsedFocusSeconds, id, localDate, nextDisplayCode, remainingSeconds, timelineEvent, validScheduleRange, type DailySchedule, type DayState, type DayTask, type TaskStatus } from '../domain/model'
 import type { CloseDayRequest, CloseDayResult, CreateTaskRequest, EndOfDayPreview, SaveScheduleRequest, TimerSettings, UpdateTaskRequest, WorkEntryRequest, WorklogGateway } from '../application/gateway'
 import { loadDay, loadStoredDay, saveDay } from './dayStorage'
 import { LONG_TERM_FOCUS_PREFIX, saveLongTermItem, validateWorkload, workloadChange, WORKLOAD_LABELS, type LongTermItem, type MoveToLongTerm, type SaveLongTermItem } from '../domain/longTerm'
@@ -38,7 +38,24 @@ export class BrowserGateway implements WorklogGateway {
   async saveLongTermWork(input: SaveLongTermItem) {
     const storage = loadLongTermStorage()
     const next = saveLongTermItem(storage.items, input, id)
-    saveLongTermStorage({ ...storage, items: next })
+    const previous = storage.items.find((item) => item.id === input.id)
+    const change = previous ? workloadChange(previous.workload, input.workload)
+      : input.workload ? `，工作量：${WORKLOAD_LABELS[input.workload]}` : ''
+    let eventType: string
+    let action: string
+    if (!previous) { eventType = 'created'; action = '新增' }
+    else if (previous.completed !== input.completed) {
+      eventType = input.completed ? 'completed' : 'reopened'
+      action = input.completed ? '完成' : '重开'
+    } else if (change) { eventType = 'workload_changed'; action = '调整' }
+    else {
+      saveLongTermStorage({ ...storage, items: next })
+      return next
+    }
+    const parent = storage.items.find((item) => item.id === input.parentId)
+    const title = parent ? `长期子事项：${parent.title} / ${input.title.trim()}` : `长期任务：${input.title.trim()}`
+    const event = timelineEvent(`long_term.${eventType}`, `${action}${title}${change}`)
+    saveLongTermStorage({ ...storage, items: next, activity: [...(storage.activity ?? []), { workDate: localDate(), event }] })
     return next
   }
 
@@ -69,7 +86,7 @@ export class BrowserGateway implements WorklogGateway {
     }
     const change = workloadChange(source.workload, input.workload)
     const event = timelineEvent('task.moved_to_long_term', `任务${source.displayCode}移入长期工作：${input.title.trim()}${change}`)
-    saveLongTermStorage({ items, transfers: [...storage.transfers, { workDate: input.workDate, taskIds: [...ids], event }] })
+    saveLongTermStorage({ ...storage, items, transfers: [...storage.transfers, { workDate: input.workDate, taskIds: [...ids], event }] })
     return loadDay(input.workDate)
   }
 
