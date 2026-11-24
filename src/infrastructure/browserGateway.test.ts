@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserGateway } from './browserGateway'
 import { loadStoredDay } from './dayStorage'
 import { LONG_TERM_FOCUS_PREFIX } from '../domain/longTerm'
+import { localDate } from '../domain/model'
 
 const gateway = new BrowserGateway()
 const workDate = '2026-11-23'
@@ -18,6 +19,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('long-term work integration', () => {
+  it('keeps long-term activity once in the daily timeline after later writes', async () => {
+    const workDate = localDate()
+    const [parent] = await gateway.saveLongTermWork({ id: null, parentId: null, title: '设备选型', workload: null, completed: false })
+    const [, child] = await gateway.saveLongTermWork({ id: null, parentId: parent.id, title: '收集规格', workload: 'light', completed: false })
+    await gateway.saveLongTermWork({ ...child, completed: true })
+    await gateway.saveLongTermWork({ ...child, completed: true })
+    await gateway.saveLongTermWork({ ...parent, completed: true })
+    await gateway.saveLongTermWork({ ...child, workload: 'large', completed: false })
+    const day = await gateway.createTask({ ...taskInput, workDate, parentId: null })
+    await gateway.moveTaskToLongTerm({ workDate, instanceId: day.tasks[0].id, parentId: null, title: '另一项计划', workload: null })
+    const { timeline } = await gateway.getDaySnapshot(workDate)
+    expect(timeline.filter((event) => event.type.startsWith('long_term.')).map((event) => event.title)).toEqual([
+      '新增长期任务：设备选型',
+      '新增长期子事项：设备选型 / 收集规格，工作量：轻松（<1 h）',
+      '完成长期子事项：设备选型 / 收集规格',
+      '完成长期任务：设备选型',
+      '重开长期子事项：设备选型 / 收集规格，工作量：轻松（<1 h） → 较大（1–2 h）',
+    ])
+  })
+
   it('moves a daily group with the original IDs, estimates and records', async () => {
     const { tasks: [parent] } = await gateway.createTask({ ...taskInput, parentId: null })
     const day = await gateway.createTask({ ...taskInput, parentId: parent.id, workload: 'light' })

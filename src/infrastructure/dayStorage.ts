@@ -1,5 +1,5 @@
 import { emptyDay, type DayState } from '../domain/model'
-import { loadLongTermStorage } from './longTermStorage'
+import { loadLongTermStorage, longTermEvents } from './longTermStorage'
 
 const key = (date: string) => `worklog.day.${date}`
 
@@ -16,9 +16,9 @@ export function loadStoredDay(date: string): DayState {
 
 export function loadDay(date: string): DayState {
   const stored = loadStoredDay(date)
-  const { transfers } = loadLongTermStorage()
-  const movedIds = new Set(transfers.filter((transfer) => transfer.workDate <= date).flatMap((transfer) => transfer.taskIds))
-  const events = transfers.filter((transfer) => transfer.workDate === date).map((transfer) => transfer.event)
+  const storage = loadLongTermStorage()
+  const movedIds = new Set(storage.transfers.filter((transfer) => transfer.workDate <= date).flatMap((transfer) => transfer.taskIds))
+  const events = longTermEvents(storage, date)
   return {
     ...stored,
     tasks: stored.tasks.filter((task) => !movedIds.has(task.permanentTaskId)),
@@ -27,9 +27,9 @@ export function loadDay(date: string): DayState {
 }
 
 export function saveDay(value: DayState): void {
-  const { transfers } = loadLongTermStorage()
-  const movedIds = new Set(transfers.filter((transfer) => transfer.workDate <= value.workDate).flatMap((transfer) => transfer.taskIds))
-  const eventIds = new Set(transfers.filter((transfer) => transfer.workDate === value.workDate).map((transfer) => transfer.event.id))
+  const storage = loadLongTermStorage()
+  const movedIds = new Set(storage.transfers.filter((transfer) => transfer.workDate <= value.workDate).flatMap((transfer) => transfer.taskIds))
+  const eventIds = new Set(longTermEvents(storage, value.workDate).map((event) => event.id))
   const archived = loadStoredDay(value.workDate).tasks.filter((task) => movedIds.has(task.permanentTaskId))
   localStorage.setItem(key(value.workDate), JSON.stringify({
     ...value,

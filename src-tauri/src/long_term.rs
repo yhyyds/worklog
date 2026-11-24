@@ -1,4 +1,5 @@
 use crate::{db, model::DayState, Database};
+use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -152,7 +153,7 @@ fn list(connection: &Connection) -> Result<Vec<LongTermItem>, String> {
     rows.collect::<Result<_, _>>().map_err(|error| error.to_string())
 }
 
-fn save(connection: &Connection, input: SaveLongTermInput) -> Result<(), String> {
+fn save(connection: &Connection, input: &SaveLongTermInput) -> Result<String, String> {
     let title = input.title.trim();
     if !(1..=200).contains(&title.chars().count()) {
         return Err("长期任务内容须为 1–200 字".into());
@@ -165,19 +166,58 @@ fn save(connection: &Connection, input: SaveLongTermInput) -> Result<(), String>
         ).map_err(|error| error.to_string())?;
         if !valid { return Err("长期任务父项不存在，或已达到两级上限".into()); }
     }
-    if let Some(id) = input.id {
+    if let Some(id) = &input.id {
         let changed = connection.execute(
             "UPDATE long_term_work SET title=?1,workload=?2,completed=?3 WHERE id=?4 AND parent_id IS ?5",
             params![title, input.workload, input.completed, id, input.parent_id],
         ).map_err(|error| error.to_string())?;
         if changed == 0 { return Err("长期任务不存在或父项不匹配".into()); }
+        Ok(id.clone())
     } else {
+        let id = db::new_id();
         connection.execute(
             "INSERT INTO long_term_work(id,parent_id,title,workload,completed) VALUES(?1,?2,?3,?4,?5)",
-            params![db::new_id(), input.parent_id, title, input.workload, input.completed],
+            params![id, input.parent_id, title, input.workload, input.completed],
         ).map_err(|error| error.to_string())?;
+        Ok(id)
     }
-    Ok(())
+}
+
+fn save_with_event(connection: &mut Connection, input: SaveLongTermInput, work_date: &str) -> Result<Vec<LongTermItem>, String> {
+    let tx = connection.transaction().map_err(|error| error.to_string())?;
+    let previous = input.id.as_ref().map(|id| tx.query_row(
+        "SELECT completed,workload FROM long_term_work WHERE id=?1",
+        [id], |row| Ok((row.get::<_, bool>(0)?, row.get::<_, Option<String>>(1)?)),
+    ).map_err(|_| "长期任务不存在".to_string())).transpose()?;
+    let id = save(&tx, &input)?;
+    let workload = input.workload.as_deref();
+    let event = match previous {
+        None => Some(("long_term.created", "新增", workload.map(|value| format!("，工作量：{}", workload_label(Some(value)))).unwrap_or_default())),
+        Some((was_completed, old_workload)) => {
+            let change = workload_change(old_workload.as_deref(), workload);
+            match (was_completed, input.completed) {
+                (false, true) => Some(("long_term.completed", "完成", change)),
+                (true, false) => Some(("long_term.reopened", "重开", change)),
+                _ if !change.is_empty() => Some(("long_term.workload_changed", "调整", change)),
+                _ => None,
+            }
+        }
+    };
+    if let Some((event_type, action, change)) = event {
+        let title = input.title.trim();
+        let event_title = if let Some(parent_id) = &input.parent_id {
+            let parent_title: String = tx.query_row(
+                "SELECT title FROM long_term_work WHERE id=?1", [parent_id], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            format!("{action}长期子事项：{parent_title} / {title}{change}")
+        } else {
+            format!("{action}长期任务：{title}{change}")
+        };
+        db::append_event(&tx, event_type, "long_term_work", &id, work_date, "summary", &event_title, None, &db::new_id())?;
+    }
+    let items = list(&tx)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(items)
 }
 
 #[tauri::command]
@@ -188,9 +228,9 @@ pub(crate) fn list_long_term_work(database: State<'_, Database>) -> Result<Vec<L
 
 #[tauri::command]
 pub(crate) fn save_long_term_work(database: State<'_, Database>, input: SaveLongTermInput) -> Result<Vec<LongTermItem>, String> {
-    let connection = database.0.lock().map_err(|error| error.to_string())?;
-    save(&connection, input)?;
-    list(&connection)
+    let mut connection = database.0.lock().map_err(|error| error.to_string())?;
+    let work_date = Local::now().date_naive().to_string();
+    save_with_event(&mut connection, input, &work_date)
 }
 
 #[cfg(test)]
@@ -204,6 +244,44 @@ mod tests {
             urgency: "urgent".into(), parent_id, planned_start: None, planned_end: None,
             workload: workload.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn activity_is_logged_on_the_action_date_and_rendered_in_the_daily_note() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        db::initialize(&connection).unwrap();
+        let first_date = "2026-11-23";
+        let completion_date = "2026-11-24";
+        let parent = SaveLongTermInput { id: None, parent_id: None, title: "设备选型".into(), workload: None, completed: false };
+        let items = save_with_event(&mut connection, parent, first_date).unwrap();
+        let parent = SaveLongTermInput { id: Some(items[0].id.clone()), parent_id: None, title: "设备选型".into(), workload: None, completed: true };
+        let child = |id, completed| SaveLongTermInput {
+            id, parent_id: parent.id.clone(), title: "收集规格".into(), workload: Some("light".into()), completed,
+        };
+        let items = save_with_event(&mut connection, child(None, false), first_date).unwrap();
+        let child_id = items[1].id.clone();
+        save_with_event(&mut connection, child(Some(child_id.clone()), true), completion_date).unwrap();
+        save_with_event(&mut connection, child(Some(child_id.clone()), true), completion_date).unwrap();
+        save_with_event(&mut connection, child(Some(child_id.clone()), false), completion_date).unwrap();
+        save_with_event(&mut connection, SaveLongTermInput { workload: Some("large".into()), ..child(Some(child_id), false) }, completion_date).unwrap();
+        save_with_event(&mut connection, parent, completion_date).unwrap();
+
+        let first = db::read_day(&connection, first_date).unwrap();
+        assert!(first.tasks.is_empty());
+        assert_eq!(first.timeline.iter().map(|event| event.title.as_str()).collect::<Vec<_>>(), vec![
+            "新增长期任务：设备选型",
+            "新增长期子事项：设备选型 / 收集规格，工作量：轻松（<1 h）",
+        ]);
+        let day = db::read_day(&connection, completion_date).unwrap();
+        assert!(day.tasks.is_empty() && day.schedules.is_empty());
+        assert_eq!(day.timeline.iter().map(|event| event.title.as_str()).collect::<Vec<_>>(), vec![
+            "完成长期子事项：设备选型 / 收集规格",
+            "重开长期子事项：设备选型 / 收集规格",
+            "调整长期子事项：设备选型 / 收集规格，工作量：轻松（<1 h） → 较大（1–2 h）",
+            "完成长期任务：设备选型",
+        ]);
+        let markdown = crate::obsidian::render_managed(&day, &[]);
+        assert!(markdown.split_once("## 今日记录").unwrap().1.contains("完成长期任务：设备选型"));
     }
 
     #[test]
@@ -243,7 +321,7 @@ mod tests {
     fn child_can_move_into_an_existing_long_term_parent() {
         let mut connection = Connection::open_in_memory().unwrap();
         db::initialize(&connection).unwrap();
-        save(&connection, SaveLongTermInput {
+        save(&connection, &SaveLongTermInput {
             id: None, parent_id: None, title: "既有计划".into(), workload: None, completed: false,
         }).unwrap();
         let destination = list(&connection).unwrap().remove(0);
@@ -266,7 +344,7 @@ mod tests {
         let mut connection = Connection::open_in_memory().unwrap();
         db::initialize(&connection).unwrap();
         let work_date = "2026-11-23";
-        save(&connection, SaveLongTermInput {
+        save(&connection, &SaveLongTermInput {
             id: None, parent_id: None, title: "设备校核".into(), workload: None, completed: false,
         }).unwrap();
         let parent = list(&connection).unwrap().remove(0);
@@ -308,15 +386,15 @@ mod tests {
         let input = |parent_id, workload| SaveLongTermInput {
             id: None, title: "工作安排".into(), parent_id, workload, completed: false,
         };
-        assert!(save(&connection, input(None, Some("light".into()))).is_err());
-        save(&connection, input(None, None)).unwrap();
+        assert!(save(&connection, &input(None, Some("light".into()))).is_err());
+        save(&connection, &input(None, None)).unwrap();
         let parent = list(&connection).unwrap().remove(0);
-        assert!(save(&connection, input(Some(parent.id.clone()), Some("over_3h".into()))).is_err());
-        save(&connection, input(Some(parent.id.clone()), Some("large".into()))).unwrap();
+        assert!(save(&connection, &input(Some(parent.id.clone()), Some("over_3h".into()))).is_err());
+        save(&connection, &input(Some(parent.id.clone()), Some("large".into()))).unwrap();
         let child = list(&connection).unwrap().remove(1);
-        assert!(save(&connection, input(Some(child.id.clone()), None)).is_err());
-        assert!(save(&connection, SaveLongTermInput { id: Some(child.id.clone()), ..input(None, None) }).is_err());
-        save(&connection, SaveLongTermInput {
+        assert!(save(&connection, &input(Some(child.id.clone()), None)).is_err());
+        assert!(save(&connection, &SaveLongTermInput { id: Some(child.id.clone()), ..input(None, None) }).is_err());
+        save(&connection, &SaveLongTermInput {
             id: Some(child.id.clone()), completed: true, title: "更新后".into(),
             ..input(Some(parent.id), Some("very_large".into()))
         }).unwrap();

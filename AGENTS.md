@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.5.1`，分支 `codex/1.5.1-move-long-term-work`，从经验证的 `baseline/1.5.0` 提交 `b0fd67a` 继续。普通任务编辑可移入长期板；今日子任务的工作量纳入不可变时间轴。
+当前迭代为 `1.5.2`，分支 `codex/1.5.2-long-term-timeline`，从经验证的 `baseline/1.5.1` 提交 `efa1fb8` 继续。长期工作的新建、完成、重开和工作量变更纳入当天的不可变时间轴。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。
