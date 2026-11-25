@@ -5,9 +5,13 @@
 .integration-option { display: block; margin-bottom: 10px; }
 .integration-fields { display: grid; gap: 10px; margin-top: 10px; }
 .integration-fields label { display: grid; gap: 4px; }
+.integration-fields select,
 .integration-fields input,
 .integration-fields textarea { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: white; }
 .integration-fields textarea { min-height: 68px; resize: vertical; }
 .integration-fields pre,
 .integration-advice { padding: 12px; max-height: 300px; overflow: auto; background: #f1f4f1; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; }
 .integration-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.integration-proposals { display: grid; gap: 10px; list-style: none; padding: 0; margin: 10px 0; }
+.integration-proposals > li { padding: 10px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.integration-subtasks { padding-left: 20px; margin: 0 0 12px; }
