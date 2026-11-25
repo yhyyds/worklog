@@ -4,7 +4,7 @@
 
 ## 2.0 日程集成
 
-在「日程集成」中可直接用内置 DeepSeek 助手起草四象限主任务和子任务，核对提案后一起保存。外部 Harness 可选用内置 MCP，读取日程和提出新增或改期。参见[上手与接口说明](docs/SCHEDULE_INTEGRATIONS.md)。
+在「日程集成」启动本机 MCP，让外部 AI 读取日程、提出新增任务组或改期，再在 Worklog 中核对和批准。参见[连接说明](docs/SCHEDULE_INTEGRATIONS.md)和[可导入的技能](docs/skills/worklog-scheduling/SKILL.md)。
 
 “我的一天”的四象限上方保留跨天的长期工作任务板。今日任务可移入长期板，保留历史；番茄钟可专注未完成的长期主任务。
 

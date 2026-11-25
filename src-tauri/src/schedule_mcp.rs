@@ -69,7 +69,7 @@ struct CreateTaskProposal {
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct TaskGroup {
+struct TaskGroup {
     title: String,
     importance: String,
     urgency: String,
@@ -87,7 +87,7 @@ struct Subtask {
     workload: String,
 }
 
-pub(super) fn validate_date(work_date: &str) -> Result<(), String> {
+fn validate_date(work_date: &str) -> Result<(), String> {
     if date(work_date)? < Local::now().date_naive() {
         return Err("历史日程只能读取".into());
     }
@@ -126,7 +126,7 @@ fn read_day(connection: &Connection, work_date: &str) -> Result<crate::model::Da
     db::read_day(connection, work_date).map_err(|_| "无法读取日程".into())
 }
 
-pub(super) fn check_revision(actual: &str, expected: &str) -> Result<(), String> {
+fn check_revision(actual: &str, expected: &str) -> Result<(), String> {
     if actual != expected {
         return Err("日程已有变化，请重新读取并提交提案".into());
     }
@@ -205,7 +205,7 @@ impl Proposals {
         self.enqueue(input.work_date, input.expected_revision, action)
     }
 
-    pub(super) fn stage_create(
+    fn stage_create(
         &self, connection: &Connection, work_date: String, expected_revision: String, plan: TaskGroup,
     ) -> Result<Value, String> {
         validate_date(&work_date)?;
@@ -236,14 +236,14 @@ impl Proposals {
         Ok(result)
     }
 
-    pub(super) fn decide(&self, connection: &mut Connection, id: &str, approve: bool) -> Result<bool, String> {
+    pub(super) fn decide(&self, connection: &mut Connection, id: &str, approve: bool) -> Result<(), String> {
         let mut pending = self.0.lock().map_err(|_| "提案队列不可用")?;
-        let Some(index) = pending.iter().position(|proposal| proposal.id == id) else { return Ok(false); };
+        let index = pending.iter().position(|proposal| proposal.id == id).ok_or("提案不存在或已处理")?;
         if approve {
             apply(connection, &pending[index])?;
         }
         pending.remove(index);
-        Ok(true)
+        Ok(())
     }
 }
 
@@ -284,7 +284,7 @@ fn apply(connection: &mut Connection, proposal: &Proposal) -> Result<(), String>
 
 pub(super) const CREATE_TASK_TOOL: &str = "propose_create_task";
 
-pub(super) fn task_group_schema() -> Value {
+fn task_group_schema() -> Value {
     let time = json!({"type": ["string", "null"], "pattern": "^[0-9]{2}:[0-9]{2}$", "description": "Optional local time HH:MM. Provide start and end together."});
     json!({
         "type": "object", "additionalProperties": false,
@@ -475,7 +475,7 @@ mod tests {
         assert_eq!(json!(original.timeline), json!(staged.timeline));
         let id = result["proposal"]["id"].as_str().unwrap();
         proposals.decide(&mut connection, id, true).unwrap();
-        assert!(!proposals.decide(&mut connection, id, true).unwrap());
+        assert!(proposals.decide(&mut connection, id, true).is_err());
         let saved = read_day(&connection, &work_date).unwrap();
         let mut expected = original.tasks;
         expected[1].planned_start = Some("14:30".into());
@@ -560,8 +560,8 @@ mod tests {
         assert!(proposals.decide(&mut connection, id, true).is_err());
         assert_eq!(read_day(&connection, &work_date).unwrap(), before);
         connection.execute_batch("DROP TRIGGER fail_child;").unwrap();
-        assert!(proposals.decide(&mut connection, id, true).unwrap());
-        assert!(!proposals.decide(&mut connection, id, true).unwrap());
+        proposals.decide(&mut connection, id, true).unwrap();
+        assert!(proposals.decide(&mut connection, id, true).is_err());
         assert!(call_tool(&connection, &proposals, &tool).is_err());
         let saved = read_day(&connection, &work_date).unwrap();
         let parent = &saved.tasks[2];
