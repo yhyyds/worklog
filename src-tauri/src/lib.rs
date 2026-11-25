@@ -8,6 +8,7 @@ mod categories;
 mod planning;
 mod sharing;
 mod inbox;
+mod integrations;
 mod long_term;
 mod model;
 mod notes;
@@ -58,6 +59,7 @@ pub fn run() {
             fs::create_dir_all(&data_dir)?;
             let connection = db::open_database(&data_dir.join("worklog.db"))?;
             app.manage(Database(Mutex::new(connection)));
+            app.manage(integrations::LocalApi::default());
             app.manage(storage::StorageRuntime::new(app_dir, data_dir));
             if let Some(path) = demo_dir {
                 if let Some(window) = app.get_webview_window("main") {
@@ -126,14 +128,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             healthcheck,
+            integrations::local_api_status,
+            integrations::start_local_api,
+            integrations::stop_local_api,
+            integrations::preview_ai_schedule,
+            integrations::ask_schedule_ai,
             long_term::list_long_term_work,
             long_term::save_long_term_work,
             long_term::move_task_to_long_term,
-            categories::get_growth_catalog,
-            categories::save_growth_category,
-            categories::assign_growth_category,
-            planning::save_goal_action_plan,
-            planning::delete_goal_action,
             sharing::get_report_overview,
             sharing::get_share_preference,
             sharing::save_share_preference,
@@ -155,17 +157,6 @@ pub fn run() {
             commands::resume_focus,
             commands::switch_focus,
             commands::complete_focus,
-            growth::list_habits,
-            growth::create_habit,
-            growth::archive_habit,
-            growth::get_habit_review,
-            growth::complete_habit_review,
-            growth::list_long_term_goals,
-            growth::create_long_term_goal,
-            growth::create_goal_phase,
-            growth::save_goal_phase_note,
-            growth::create_goal_action,
-            growth::set_goal_action_progress,
             reports::get_weekly_report,
             reports::save_weekly_report_image,
             timer::get_timer_settings,

@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.5.2`，分支 `codex/1.5.2-long-term-timeline`，从经验证的 `baseline/1.5.1` 提交 `efa1fb8` 继续。长期工作的新建、完成、重开和工作量变更纳入当天的不可变时间轴。
+当前迭代为 `2.0.0`，分支 `codex/2.0.0-schedule-integrations`，从经验证的 `baseline/1.5.2` 提交 `48acba9` 继续。日程集成使用日期投影，保留既有长期工作板和历史数据。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

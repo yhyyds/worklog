@@ -1,7 +1,7 @@
-import { habitLabels, habitSymbols, minutesText, priorityGroups, rateText, streakText, taskLabels, trend, trophies, weekdays, type WeeklyReportData } from '../domain/report'
-import { goalRate, type CategorySummary } from '../domain/sharing'
+import { minutesText, priorityGroups, rateText, taskLabels, trend, weekdays, type WeeklyReportData } from '../domain/report'
+import { type CategorySummary } from '../domain/sharing'
 
-// Measure and render the same layout, so longer titles and additional habits
+// Measure and render the same layout, so longer titles and additional tasks
 // expand the image instead of being truncated by a fixed-height template.
 export async function renderReportPng(report: WeeklyReportData, categories: CategorySummary[] = []): Promise<Blob> {
   await document.fonts.ready
@@ -45,20 +45,18 @@ function drawReport(ctx: CanvasRenderingContext2D, r: WeeklyReportData, categori
   text(`${r.weekStart} — ${r.weekEnd}`, 22); y += 12
   if (r.observation) text(r.observation)
   text(`截至 ${r.daily[r.comparisonDays - 1].date} · 与上周同期比较`, 18, '#7b887f'); y += 24
-  table(['完成事项', '专注时间', '计划完成率', '习惯打卡'], [[`${r.completedTasks}/${r.plannedTasks}`, minutesText(r.focusMinutes), rateText(r.completedTasks, r.plannedTasks), `${r.habitEffective}/${r.habitTotal}`]])
+  table(['完成事项', '专注时间', '计划完成率'], [[`${r.completedTasks}/${r.plannedTasks}`, minutesText(r.focusMinutes), rateText(r.completedTasks, r.plannedTasks)]])
   y += 12; text(`完成事项：${trend(r.completedChangePercent)}；专注时间：${trend(r.focusChangePercent)}`, 19)
 
-  if (categories.length) { section('分类完成情况', '本周安排'); for (const category of categories) { const c = category.counts; text(category.name, 26, category.color, 700); table(['习惯打卡', '目标计划', '本周最长连续', '中断'], [[`${c.habitDone}/${c.habitReviewed} · ${rateText(c.habitDone, c.habitReviewed)}`, goalRate(c) === null ? '—' : `${goalRate(c)}%`, `${c.habitBestStreak} 天`, `${c.habitBreaks} 次`]]); text(`目标必做 ${c.goalDone}/${c.goalRequired} · 附加 ${c.goalOptionalDone}/${c.goalOptional}`, 19); y += 16 } }
-  section('习惯记录', `${r.habits.filter(h => h.breaks > 0).length} 个习惯中断 · 共 ${r.habits.reduce((n, h) => n + h.breaks, 0)} 次中断 · ${r.habitPending} 次待回顾`)
-  text(Object.keys(habitLabels).map(key => `${habitSymbols[key]} ${habitLabels[key]}`).join('    '), 18)
-  if (!r.habits.length) text('本周没有打卡项。')
-  for (const h of r.habits) {
-    y += 20; text(h.title, 26, '#284735', 700)
-    table(weekdays.map(day => `周${day}`), [h.days.map(status => habitSymbols[status])])
-    y += 12
-    text(`连续完成 ${streakText(h)} · 本周最长 ${h.weekLongestStreak} 天 · 历史最长 ${h.longestStreak} 天 · 本周中断 ${h.breaks} 次`, 19)
-    text(`本周完成 ${h.completed} 次，未完成 ${h.missed + h.prerequisiteMissed} 次；上周同期 ${h.previousReviewed ? `${h.previousCompleted}/${h.previousReviewed} 次` : '无记录'}`, 19)
-    if (h.prerequisiteMissed) text(`有 ${h.prerequisiteMissed} 天做到了这一项，但前置打卡未完成。`, 19, '#956d38')
+  const visibleCategories = categories.filter(({ counts }) => counts.planned > 0 || counts.focusMinutes > 0)
+  if (visibleCategories.length) {
+    section('分类完成情况', '本周安排')
+    for (const category of visibleCategories) {
+      const counts = category.counts
+      text(category.name, 26, category.color, 700)
+      table(['完成 / 计划', '完成率', '专注'], [[`${counts.completed}/${counts.planned}`, rateText(counts.completed, counts.planned), minutesText(counts.focusMinutes)]])
+      y += 16
+    }
   }
   section('专注与每日安排')
   const f = r.focusDetail
@@ -71,7 +69,7 @@ function drawReport(ctx: CanvasRenderingContext2D, r: WeeklyReportData, categori
     ctx.fillStyle = '#78a78a'; ctx.fillRect(left, chartY + 180 - barHeight, 68, barHeight)
     ctx.fillStyle = '#526b5b'; ctx.font = '18px "Microsoft YaHei"'; ctx.fillText(`周${weekdays[i]}`, left, chartY + 196)
   }); y += 240
-  table(['日期', '完成 / 计划', '完成率', '专注', '打卡完成'], r.daily.map((d, i) => [d.date.slice(5), i < r.comparisonDays ? `${d.completedTasks}/${d.plannedTasks}` : '—', rateText(d.completedTasks, d.plannedTasks), i < r.comparisonDays ? minutesText(d.focusMinutes) : '—', d.habitTotal ? `${d.habitEffective}/${d.habitTotal}` : d.habitPending ? '待回顾' : '—']))
+  table(['日期', '完成 / 计划', '完成率', '专注'], r.daily.map((d, i) => [d.date.slice(5), i < r.comparisonDays ? `${d.completedTasks}/${d.plannedTasks}` : '—', rateText(d.completedTasks, d.plannedTasks), i < r.comparisonDays ? minutesText(d.focusMinutes) : '—']))
   section('任务分布')
   table(priorityGroups.map(g => g.title), [priorityGroups.map(g => { const tasks = r.tasks.filter(t => t.importance === g.importance && t.urgency === g.urgency); return `${tasks.filter(t => t.status === 'completed').length}/${tasks.length}` })])
   for (const completed of [true, false]) {
@@ -81,10 +79,9 @@ function drawReport(ctx: CanvasRenderingContext2D, r: WeeklyReportData, categori
   }
   section('近四周对比', r.comparisonDays < 7 ? `每周前 ${r.comparisonDays} 天` : '完整周')
   const weeks = [...r.history, { weekStart: r.weekStart, planned: r.plannedTasks, completed: r.completedTasks, focusMinutes: r.focusMinutes, habitCompleted: r.habitEffective, habitReviewed: r.habitTotal }]
-  table(['周起始日', '完成 / 计划', '完成率', '专注', '打卡完成'], weeks.map(w => [w.weekStart.slice(5) + (w.weekStart === r.weekStart ? ' 本周' : ''), `${w.completed}/${w.planned}`, rateText(w.completed, w.planned), minutesText(w.focusMinutes), w.habitReviewed ? `${w.habitCompleted}/${w.habitReviewed}` : '—']))
-  if (r.goals.length) { section('长期目标', '当前进度'); for (const g of r.goals) text(`${g.title} · ${g.progressPercent}% ${g.trophy ? trophies[g.trophy] : ''}`, 23) }
+  table(['周起始日', '完成 / 计划', '完成率', '专注'], weeks.map(w => [w.weekStart.slice(5) + (w.weekStart === r.weekStart ? ' 本周' : ''), `${w.completed}/${w.planned}`, rateText(w.completed, w.planned), minutesText(w.focusMinutes)]))
   section(''); text(`“${r.quote.text}”`, 28, '#354f3c'); text(`—— ${r.quote.author} · ${r.quote.source}`, 20)
-  y += 24; text('连续天数统计至周末或昨天；未回顾不算中断。专注时长为已记录的计时。', 17, '#7b887f')
+  y += 24; text('专注时长为已记录的计时。', 17, '#7b887f')
   return y + 70
 }
 

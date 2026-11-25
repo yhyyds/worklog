@@ -1,0 +1,13 @@
+.integration-workspace { max-width: 780px; }
+.integration-section { margin: 14px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.integration-section h3 { margin: 0 0 8px; }
+.integration-section p { margin: 6px 0 12px; color: var(--muted); }
+.integration-option { display: block; margin-bottom: 10px; }
+.integration-fields { display: grid; gap: 10px; margin-top: 10px; }
+.integration-fields label { display: grid; gap: 4px; }
+.integration-fields input,
+.integration-fields textarea { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: white; }
+.integration-fields textarea { min-height: 68px; resize: vertical; }
+.integration-fields pre,
+.integration-advice { padding: 12px; max-height: 300px; overflow: auto; background: #f1f4f1; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 8px; }
+.integration-actions { display: flex; flex-wrap: wrap; gap: 8px; }
