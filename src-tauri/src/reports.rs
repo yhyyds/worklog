@@ -213,9 +213,9 @@ fn report_at(connection: &Connection, week_start: &str, today: NaiveDate) -> Res
     let baseline_weeks = historical_focus.len();
     let focus_baseline = median(historical_focus);
     let completed_baseline = median(historical_completed);
-    let (scenario, headline, observation) = if planned_tasks == 0 && focus_minutes == 0 && habit_total == 0 {
+    let (scenario, headline, observation) = if planned_tasks == 0 && focus_minutes == 0 {
         ("recovery", "本周暂无记录", "".to_string())
-    } else if completion_rate >= 100 && (habit_total == 0 || habit_rate >= 80) {
+    } else if completion_rate >= 100 {
         ("strong", "本周计划已完成", format!("完成 {completed_tasks} 项，专注 {focus_minutes} 分钟。"))
     } else if baseline_weeks >= 3 && focus_baseline > 0 && completed_baseline > 0 && focus_minutes * 100 > focus_baseline * 120 && completed_tasks * 100 < completed_baseline * 80 {
         ("recalibrate", "本周投入了更多时间", "专注时间高于近期中位数，完成项较少。可以回看未完成的任务，确认是否需要拆分或调整计划。".to_string())

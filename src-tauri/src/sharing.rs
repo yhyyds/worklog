@@ -295,7 +295,7 @@ fn overview_at(
     }
     let scenario = if counts.planned > 0 && counts.completed >= counts.planned {
         "strong"
-    } else if counts.planned == 0 && counts.habit_reviewed == 0 {
+    } else if counts.planned == 0 && counts.focus_minutes == 0 {
         "recovery"
     } else {
         "steady"

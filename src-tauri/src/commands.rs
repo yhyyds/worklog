@@ -26,7 +26,7 @@ fn save_workload(transaction: &Transaction<'_>, task_id: &str, workload: Option<
     Ok(())
 }
 
-pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInput) -> Result<DayState, String> {
+pub(crate) fn validate_task_input(input: &CreateTaskInput) -> Result<(Option<i64>, Option<i64>), String> {
     let title = input.title.trim();
     if title.is_empty() { return Err("任务内容不能为空".into()); }
     validate_workload(input.parent_id.is_some(), input.workload.as_deref())?;
@@ -38,7 +38,21 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
         return Err("任务时间段无效".into());
     }
 
+    Ok((start, end))
+}
+
+pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInput) -> Result<DayState, String> {
     let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    insert_task(&transaction, &input, &db::new_id())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    db::read_day(connection, &input.work_date)
+}
+
+pub(crate) fn insert_task(
+    transaction: &Transaction<'_>, input: &CreateTaskInput, transaction_id: &str,
+) -> Result<String, String> {
+    let (start, end) = validate_task_input(input)?;
+    let title = input.title.trim();
     let (parent_task_id, top_level_no, child_no, display_code, importance, urgency) = if let Some(parent_id) = &input.parent_id {
         let parent = transaction.query_row(
             "SELECT t.id,i.top_level_no,i.display_code,i.importance,i.urgency,i.parent_instance_id FROM task_day_instances i JOIN tasks t ON t.id=i.task_id WHERE i.id=?1 AND i.work_date=?2 AND NOT EXISTS(SELECT 1 FROM long_term_removed_instances r WHERE r.instance_id=i.id) AND NOT EXISTS(SELECT 1 FROM long_term_focus_targets lf WHERE lf.task_id=t.id)",
@@ -61,7 +75,6 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
 
     let task_id = db::new_id();
     let instance_id = db::new_id();
-    let transaction_id = db::new_id();
     let now = db::now_iso();
     transaction.execute(
         "INSERT INTO tasks(id,parent_task_id,title,status,created_at_utc,updated_at_utc) VALUES(?1,?2,?3,'not_started',?4,?4)",
@@ -71,11 +84,10 @@ pub(crate) fn create_task_core(connection: &mut Connection, input: CreateTaskInp
         "INSERT INTO task_day_instances(id,task_id,work_date,parent_instance_id,display_code,top_level_no,child_no,importance,urgency,day_status,planned_start_minute,planned_end_minute,sort_order,created_at_utc,updated_at_utc) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'not_started',?10,?11,?12,?13,?13)",
         params![instance_id, task_id, input.work_date, input.parent_id, display_code, top_level_no, child_no, importance, urgency, start, end, top_level_no * 1000 + child_no.unwrap_or(0), now],
     ).map_err(|error| error.to_string())?;
-    if input.workload.is_some() { save_workload(&transaction, &task_id, input.workload.as_deref())?; }
+    if input.workload.is_some() { save_workload(transaction, &task_id, input.workload.as_deref())?; }
     let workload_text = input.workload.as_deref().map(|value| format!("，工作量：{}", workload_label(Some(value)))).unwrap_or_default();
-    db::append_event(&transaction, "task.created", "task", &task_id, &input.work_date, "summary", &format!("新增任务{display_code}：{title}{workload_text}"), None, &transaction_id)?;
-    transaction.commit().map_err(|error| error.to_string())?;
-    db::read_day(connection, &input.work_date)
+    db::append_event(transaction, "task.created", "task", &task_id, &input.work_date, "summary", &format!("新增任务{display_code}：{title}{workload_text}"), None, transaction_id)?;
+    Ok(instance_id)
 }
 
 pub(crate) fn update_task_core(connection: &mut Connection, input: UpdateTaskInput) -> Result<DayState, String> {

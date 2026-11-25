@@ -6,7 +6,7 @@ import EndOfDay from './components/EndOfDay'
 import NotesWorkspace from './components/NotesWorkspace'
 import DesktopIntegration from './components/DesktopIntegration'
 import SettingsWorkspace from './components/SettingsWorkspace'
-import GrowthWorkspace from './components/GrowthWorkspace'
+import ScheduleIntegrations from './components/ScheduleIntegrations'
 import WeeklyReport from './components/WeeklyReport'
 import InboxWorkspace from './components/InboxWorkspace'
 import { applyFontScale, loadFontScale } from './application/appearance'
@@ -26,6 +26,7 @@ import './m14.css'
 import './m15.css'
 import './m16.css'
 import './m17.css'
+import './integrations.css'
 
 applyFontScale(loadFontScale())
 
@@ -37,7 +38,7 @@ createRoot(document.getElementById('root')!).render(
     <NotesWorkspace />
     <DesktopIntegration />
     <SettingsWorkspace />
-    <GrowthWorkspace />
+    <ScheduleIntegrations />
     <WeeklyReport />
     <InboxWorkspace />
   </StrictMode>,

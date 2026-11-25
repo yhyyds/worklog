@@ -39,7 +39,7 @@
 
 ## 开发流程
 
-当前迭代为 `1.5.2`，分支 `codex/1.5.2-long-term-timeline`，从经验证的 `baseline/1.5.1` 提交 `efa1fb8` 继续。长期工作的新建、完成、重开和工作量变更纳入当天的不可变时间轴。
+当前迭代为 `2.0.2`，基于日程集成分支的 2.0.1 提交 `8914f5a`，由外部客户端使用 MCP，Worklog 负责提案审批。2.0 系列基于 `baseline/1.5.2` 提交 `48acba9`。
 
 1. 先读 `README.md`、`docs/HANDOFF.md`、`docs/DECISIONS.md`、`docs/CONVERSATION_HANDOFF.md` 和 `docs/BACKLOG.md`。
 2. 先诊断和列出影响文件，再修改。

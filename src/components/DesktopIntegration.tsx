@@ -34,9 +34,11 @@ export default function DesktopIntegration() {
       }
 
       try {
-        const unlisten = await listen('worklog-timer-changed', () => window.dispatchEvent(new Event('worklog:reload')))
-        if (disposed) unlisten()
-        else cleanups.push(unlisten)
+        for (const event of ['worklog-timer-changed', 'worklog-schedule-changed']) {
+          const unlisten = await listen(event, () => window.dispatchEvent(new Event('worklog:reload')))
+          if (disposed) unlisten()
+          else cleanups.push(unlisten)
+        }
       } catch (reason) {
         console.warn('Timer event integration unavailable', reason)
       }
